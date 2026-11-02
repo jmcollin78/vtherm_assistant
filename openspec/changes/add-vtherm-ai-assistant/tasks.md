@@ -17,15 +17,15 @@
 
 ## 3. Données locales et secrets
 
-- [ ] 3.1 Implémenter un stockage local protégé de la dernière conversation et de son contexte par identité vérifiée ; tester la persistance après redémarrage et l'isolation entre deux utilisateurs.
-- [ ] 3.2 Implémenter la suppression de la conversation et de son contexte lors d'une nouvelle conversation ; tester l'absence de reprise et la conservation des données des autres utilisateurs.
-- [ ] 3.3 Protéger les identifiants HA et les clés de fournisseurs dans le backend ; tester leur stockage, leur remplacement, leur suppression et l'absence d'accès non autorisé.
+- [x] 3.1 Implémenter un stockage local protégé de la dernière conversation et de son contexte par identité vérifiée ; tester la persistance après redémarrage et l'isolation entre deux utilisateurs.
+- [x] 3.2 Implémenter la suppression de la conversation et de son contexte lors d'une nouvelle conversation ; tester l'absence de reprise et la conservation des données des autres utilisateurs.
+- [x] 3.3 Protéger les identifiants HA et les clés de fournisseurs dans le backend ; tester leur stockage, leur remplacement, leur suppression et l'absence d'accès non autorisé.
 - [ ] 3.4 Masquer les secrets dans les réponses et journaux, y compris les erreurs de fournisseurs ; tester des erreurs contenant des clés et des jetons.
-- [ ] 3.5 Documenter la persistance locale, la suppression des données et la conservation éventuelle par les fournisseurs ; vérifier que les procédures décrites n'affectent ni Recorder ni VTherm.
+- [x] 3.5 Documenter la persistance locale, la suppression des données et la conservation éventuelle par les fournisseurs ; vérifier que les procédures décrites n'affectent ni Recorder ni VTherm.
 
 ## 4. Fournisseurs et modèles
 
-- [ ] 4.1 Implémenter l'interface de fournisseur utilisée par ADK avec une configuration propre à chaque utilisateur ; tester l'isolation des clés et paramètres entre utilisateurs.
+- [x] 4.1 Implémenter l'interface de fournisseur utilisée par ADK avec une configuration propre à chaque utilisateur ; tester l'isolation des clés et paramètres entre utilisateurs.
 - [ ] 4.2 Intégrer Gemini avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
 - [ ] 4.3 Intégrer OpenAI avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
 - [ ] 4.4 Intégrer Claude avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
@@ -39,7 +39,7 @@
 - [ ] 5.2 Découvrir et autoriser explicitement les seules opérations de lecture vérifiées ; tester le refus côté serveur des commandes génériques, des outils VTherm d'écriture et des outils inconnus, même si le modèle tente de les appeler.
 - [ ] 5.3 Vérifier les droits, l'exposition des entités et les effets de bord des outils autorisés ; tester les entités non exposées, les accès refusés et l'absence de modification HA ou VTherm.
 - [ ] 5.4 Relever les capacités MCP et VTherm sur les versions prises en charge, y compris les dépendances et l'historique ; vérifier et documenter les outils disponibles, les lacunes et les données inaccessibles.
-- [ ] 5.5 Fournir au responsable VTherm le contrat nécessaire pour l'outil d'historique en lecture seule : périodes et événements horodatés, pagination, droits et exposition, données manquantes et couverture des entités pertinentes ; vérifier que le contrat distingue les capacités existantes des évolutions nécessaires.
+- [x] 5.5 Fournir au responsable VTherm le contrat nécessaire pour l'outil d'historique en lecture seule : périodes et événements horodatés, pagination, droits et exposition, données manquantes et couverture des entités pertinentes ; vérifier que le contrat distingue les capacités existantes des évolutions nécessaires.
 - [ ] 5.6 Intégrer l'historique et ses pages via les outils disponibles du MCP officiel ; tester les périodes, les événements, les attributs manquants, les permissions et l'absence de modification de Recorder.
 - [ ] 5.7 Vérifier avec l'outil d'historique livré séparément que les événements et les données des entités pertinentes sont accessibles via le MCP officiel ; tester aussi la détection et le signalement de l'outil absent en VTherm 10.6.3.
 - [ ] 5.8 Documenter la configuration du serveur MCP officiel, les entités exposées et les limites de lecture ; vérifier les étapes décrites sans activer d'outil de commande pour l'assistant.

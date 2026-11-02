@@ -71,3 +71,24 @@ Un accès refusé renvoie `403` et le message « Accès refusé ». Les parcours
 actuellement couverts par des tests simulés, pas encore validés sur une
 installation Home Assistant réelle. L'interface de connexion et le paquet
 de déploiement autonome restent à réaliser.
+
+## Données locales
+
+La dernière conversation, son contexte et les identifiants enregistrés sont
+conservés dans une base SQLite locale, séparément pour chaque utilisateur HA
+vérifié. Le répertoire est privé (`0700`) et la base accessible uniquement au
+compte du processus (`0600`) ; les secrets ne sont pas chiffrés dans la base.
+Protéger également l'accès à la machine, au volume et aux sauvegardes.
+
+Par défaut, le répertoire est `/data/vtherm-assistant` en mode ingress et
+`~/.local/share/vtherm-assistant` en mode autonome. `VTHERM_DATA_DIR` permet
+de choisir un autre répertoire persistant privé. Pour retirer toutes les
+données locales de l'assistant, arrêter le backend puis supprimer ce seul
+répertoire et ses éventuelles sauvegardes. Une nouvelle conversation efface
+les messages et le contexte locaux de son utilisateur ; elle ne supprime pas
+les clés et ne modifie ni Recorder ni la configuration de VTherm.
+
+Les fournisseurs de modèles distants peuvent recevoir la conversation et les
+données d'installation nécessaires pour répondre. Leur conservation dépend
+de leur politique : un effacement local ne garantit pas leur suppression chez
+ces fournisseurs.
