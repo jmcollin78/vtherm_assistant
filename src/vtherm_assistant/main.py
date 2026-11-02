@@ -84,6 +84,16 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
     application.state.conversations = ConversationStore(database)
     application.state.secrets = SecretStore(database)
     application.state.models = ModelRegistry(ModelConfigStore(database), application.state.secrets)
+
+    def redact_secrets(user_id: str, value: str | None) -> str | None:
+        if value is None:
+            return None
+        for name in SECRET_NAMES:
+            secret = application.state.secrets.get(user_id, name)
+            if secret:
+                value = value.replace(secret, "[masqué]")
+        return value
+
     oauth = None
     if mode == "standalone":
         oauth_config = oauth_config or OAuthConfig.from_environment()
@@ -111,7 +121,7 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
     @application.get("/api/model")
     def get_model(request: Request) -> JSONResponse:
         config = application.state.models.configs.get(request.state.user_id)
-        payload = {"provider": config[0], "model": config[1], "url": config[2]} if config else None
+        payload = {"provider": redact_secrets(request.state.user_id, config[0]), "model": redact_secrets(request.state.user_id, config[1]), "url": redact_secrets(request.state.user_id, config[2])} if config else None
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
     @application.put("/api/model", status_code=204)
@@ -122,6 +132,8 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
                 raise ValueError
             provider, model, url = payload.get("provider"), payload.get("model"), payload.get("url")
             if not isinstance(provider, str) or not isinstance(model, str) or (url is not None and not isinstance(url, str)):
+                raise ValueError
+            if any(redact_secrets(request.state.user_id, value) != value for value in (provider, model, url)):
                 raise ValueError
             application.state.models.configure(request.state.user_id, ModelConfig(provider, model, url))
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError):

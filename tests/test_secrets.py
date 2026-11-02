@@ -39,3 +39,18 @@ def test_secret_routes_require_admin_do_not_return_values_and_respect_identity(t
         assert application.state.secrets.get("alice", "openai") is None
     assert "secret-alice" not in caplog.text
     assert "secret-invalid" not in caplog.text
+
+
+def test_model_configuration_does_not_expose_a_saved_key(tmp_path) -> None:
+    async def verify_admin(user_id: str) -> bool:
+        return user_id == "alice"
+
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
+    headers = {"X-Remote-User-Id": "alice", "X-VTherm-Request": "1"}
+    with TestClient(application, client=(SUPERVISOR_ADDRESS, 12345)) as client:
+        assert client.put("/api/secrets/openai", headers=headers, json={"value": "secret-alice"}).status_code == 204
+        response = client.put("/api/model", headers=headers, json={"provider": "openai", "model": "secret-alice"})
+        assert response.status_code == 400
+        assert "secret-alice" not in client.get("/api/model", headers=headers).text
+        application.state.models.configs.put("alice", "ollama", "model", "http://secret-alice:11434")
+        assert "secret-alice" not in client.get("/api/model", headers=headers).text

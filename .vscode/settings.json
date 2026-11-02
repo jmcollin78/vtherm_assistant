@@ -6,6 +6,7 @@
             "matchCommandLine": true
         },
         "command": true,
-        "./.venv/bin/python": true
+        "./.venv/bin/python": true,
+        "arch": true
     }
 }

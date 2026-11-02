@@ -26,10 +26,10 @@
 ## 4. Fournisseurs et modèles
 
 - [x] 4.1 Implémenter l'interface de fournisseur utilisée par ADK avec une configuration propre à chaque utilisateur ; tester l'isolation des clés et paramètres entre utilisateurs.
-- [ ] 4.2 Intégrer Gemini avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
-- [ ] 4.3 Intégrer OpenAI avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
-- [ ] 4.4 Intégrer Claude avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
-- [ ] 4.5 Intégrer Ollama avec son URL et un modèle local sans clé distante obligatoire ; tester la configuration, les appels d'outils et l'indisponibilité du serveur.
+- [x] 4.2 Intégrer Gemini avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
+- [x] 4.3 Intégrer OpenAI avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
+- [x] 4.4 Intégrer Claude avec sa clé utilisateur ; tester la configuration, les requêtes, les appels d'outils et les erreurs sans divulgation de secret.
+- [x] 4.5 Intégrer Ollama avec son URL et un modèle local sans clé distante obligatoire ; tester la configuration, les appels d'outils et l'indisponibilité du serveur.
 - [ ] 4.6 Vérifier pour chaque gamme des quatre fournisseurs la dernière génération et la précédente lorsqu'elles existent ; documenter les modèles compatibles testés, les incompatibilités connues et les modèles non vérifiés, avec versions et capacités d'outils, de français et d'affichage progressif.
 - [ ] 4.7 Limiter le contexte et l'historique transmis selon la capacité du modèle et signaler les données tronquées ; tester les limites, la préservation des éléments nécessaires et l'absence d'envoi superflu.
 
