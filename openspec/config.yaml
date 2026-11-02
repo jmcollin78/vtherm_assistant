@@ -1,0 +1,24 @@
+schema: spec-driven
+
+context: |
+  Ce projet développe un assistant conversationnel spécialisé dans Versatile Thermostat pour Home Assistant.
+  L'assistant conseille et diagnostique sans modifier l'installation ni déclencher de surveillance autonome.
+  Les échanges MCP avec Home Assistant utilisent exclusivement son serveur MCP officiel ; les opérations accessibles au modèle sont limitées à la lecture par des contrôles côté serveur.
+  La dernière conversation et son contexte sont conservés localement pour chaque utilisateur autorisé, y compris après redémarrage ; les conversations précédentes ne sont pas conservées.
+  Les secrets sont protégés et les données transmises aux fournisseurs de modèles limitées au nécessaire.
+  La première version vise OpenAI, Claude, Gemini et Ollama, ainsi que Home Assistant OS et un parcours distinct pour Home Assistant Container.
+  Ne pas présumer des capacités, permissions ou compatibilités non vérifiées, ni figer les choix techniques encore ouverts.
+  Rédiger les artefacts en français, en conservant les titres et mots-clés imposés par le schéma OpenSpec.
+
+rules:
+  proposal:
+    - Préciser le périmètre, les exclusions et les impacts sur Home Assistant, Versatile Thermostat et les fournisseurs de modèles.
+  design:
+    - Décrire les contrôles de lecture seule, les permissions, la confidentialité et les limites des données lorsque le changement les concerne.
+    - Distinguer les décisions prises des choix à évaluer et des compatibilités à vérifier.
+  specs:
+    - Définir des exigences vérifiables et des scénarios couvrant les cas nominaux, les données indisponibles et les accès refusés lorsque pertinents.
+    - Distinguer les faits observés, les hypothèses et les informations manquantes dans les exigences de diagnostic.
+  tasks:
+    - Découper le travail en tâches vérifiables et ordonnées selon leurs dépendances.
+    - Prévoir les tests adaptés, notamment pour la lecture seule, les permissions et la protection des secrets lorsque le changement les concerne.
