@@ -12,6 +12,7 @@ def main() -> None:
         host="0.0.0.0" if mode == "ingress" else "127.0.0.1",
         port=8099 if mode == "ingress" else 8765,
         proxy_headers=False,
+        access_log=False,
     )
 
 

@@ -22,8 +22,52 @@ dépendances. Si le terminal fonctionne sous Rosetta (`uname -m` affiche
 `x86_64`) mais que les dépendances sont en `arm64`, ouvrir un shell natif avec
 `arch -arm64 /bin/bash` avant d'exécuter les commandes ci-dessus.
 
-Le mode ingress est activé avec `VTHERM_DEPLOYMENT_MODE=ingress`. Il refuse les
-connexions qui ne proviennent pas du Supervisor et ne considère pas l'identité
-transmise comme une preuve des droits administrateur. Le lancement doit passer
-par `python -m vtherm_assistant`, qui désactive l'interprétation des en-têtes
-de proxy par le serveur afin de conserver l'adresse du client réseau réel.
+## Identification
+
+L'accès aux données et aux requêtes est réservé aux administrateurs Home
+Assistant actifs. Les sessions autonomes sont conservées en mémoire et ne
+survivent pas au redémarrage du backend.
+
+### Home Assistant OS : ingress
+
+Le mode ingress est activé avec `VTHERM_DEPLOYMENT_MODE=ingress`. Il nécessite
+un lancement par le Supervisor, qui fournit `SUPERVISOR_TOKEN` au backend et
+transmet l'identité de l'utilisateur. Ce jeton doit rester secret et ne doit
+jamais être transmis au navigateur.
+
+Le backend refuse les connexions qui ne proviennent pas du Supervisor et
+vérifie les droits de l'utilisateur auprès de Home Assistant. Le lancement
+doit passer par `python -m vtherm_assistant`, qui désactive l'interprétation
+des en-têtes de proxy pour conserver l'adresse du client réseau réel. Le
+paquet d'installation HA OS n'est pas encore disponible.
+
+### Home Assistant Container : OAuth
+
+Le mode autonome nécessite un proxy HTTPS devant le backend et une URL HTTPS
+de Home Assistant accessible au navigateur. Renseigner les trois adresses de
+base, sans chemin ni identifiants :
+
+```sh
+export VTHERM_APP_URL=https://assistant.example.org
+export VTHERM_HA_BROWSER_URL=https://home.example.org
+export VTHERM_HA_INTERNAL_URL=http://homeassistant:8123
+python -m vtherm_assistant
+```
+
+Le proxy doit transmettre les requêtes à `127.0.0.1:8765`. L'adresse interne
+peut utiliser HTTP ou HTTPS ; en HTTP, les jetons et les données circulent en
+clair entre le backend et Home Assistant. Utiliser uniquement un réseau de
+confiance ou choisir HTTPS pour ce lien également.
+
+Le navigateur ouvre `/auth/login`, puis l'utilisateur se connecte et autorise
+l'application auprès de Home Assistant. Le retour OAuth vérifie son identité
+et ses droits ; les routes privées restent inaccessibles sans session
+administrateur. Une déconnexion via `POST /auth/logout` invalide la session
+locale et tente de révoquer le jeton auprès de Home Assistant. Si cette
+révocation échoue, le message indique que la déconnexion locale a réussi mais
+que la révocation HA est impossible.
+
+Un accès refusé renvoie `403` et le message « Accès refusé ». Les parcours sont
+actuellement couverts par des tests simulés, pas encore validés sur une
+installation Home Assistant réelle. L'interface de connexion et le paquet
+de déploiement autonome restent à réaliser.

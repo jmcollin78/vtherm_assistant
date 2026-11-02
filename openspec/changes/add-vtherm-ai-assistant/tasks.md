@@ -10,10 +10,10 @@
 
 - [x] 2.1 Implémenter l'identification ingress sous HA OS et le contrôle de provenance Supervisor ; tester les en-têtes absents ou forgés et les accès directs refusés.
 - [x] 2.2 Vérifier le statut actif et administrateur de l'utilisateur ingress auprès de HA ; tester les comptes non administrateurs, désactivés, supprimés et les erreurs de vérification.
-- [ ] 2.3 Implémenter sous HA Container la connexion HA OAuth avec PKCE et la vérification d'identité et des droits ; tester les redirections, les tentatives de falsification et les accès refusés.
-- [ ] 2.4 Protéger les sessions et les jetons, gérer leur expiration et leur révocation ; tester l'isolation des utilisateurs et le refus après perte des droits ou déconnexion.
-- [ ] 2.5 Protéger les routes de conversation, de configuration et de requête ; tester qu'aucune donnée privée ni requête n'est accessible sans administrateur vérifié.
-- [ ] 2.6 Documenter les parcours d'identification HA OS et Container et leurs prérequis ; vérifier les parcours décrits et les messages en cas d'accès refusé.
+- [x] 2.3 Implémenter sous HA Container la connexion HA OAuth avec PKCE et la vérification d'identité et des droits ; tester les redirections, les tentatives de falsification et les accès refusés.
+- [x] 2.4 Protéger les sessions et les jetons, gérer leur expiration et leur révocation ; tester l'isolation des utilisateurs et le refus après perte des droits ou déconnexion.
+- [x] 2.5 Protéger les routes de conversation, de configuration et de requête ; tester qu'aucune donnée privée ni requête n'est accessible sans administrateur vérifié.
+- [x] 2.6 Documenter les parcours d'identification HA OS et Container et leurs prérequis ; vérifier les parcours décrits et les messages en cas d'accès refusé.
 
 ## 3. Données locales et secrets
 

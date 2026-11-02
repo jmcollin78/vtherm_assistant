@@ -1,13 +1,17 @@
 import os
 import subprocess
 import sys
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from fastapi import Request
+import pytest
+from fastapi import Request, WebSocket
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from vtherm_assistant.__main__ import main
 from vtherm_assistant.main import SUPERVISOR_ADDRESS, app, create_app
+from vtherm_assistant.oauth import OAuthConfig, OAuthTokens
+from vtherm_assistant.oauth_flow import SESSION_COOKIE, Session
 
 
 def test_frontend_is_served() -> None:
@@ -22,7 +26,7 @@ def test_frontend_is_served() -> None:
 def test_private_endpoints_are_unavailable() -> None:
     with TestClient(app) as client:
         for path in ("/conversation", "/configuration", "/api/conversation"):
-            assert client.get(path, headers={"X-Remote-User-Id": "forged"}).status_code == 404
+            assert client.get(path, headers={"X-Remote-User-Id": "forged"}).status_code == 403
 
 
 def test_adk_and_app_start_without_provider_credentials() -> None:
@@ -76,3 +80,41 @@ def test_server_does_not_trust_forwarded_client_addresses(monkeypatch) -> None:
         main()
 
     assert run.call_args.kwargs["proxy_headers"] is False
+
+
+def test_private_http_and_websocket_routes_require_verified_identity() -> None:
+    config = OAuthConfig("https://assistant.example", "https://ha.example", "http://homeassistant:8123")
+    secured_app = create_app("standalone", oauth_config=config)
+
+    async def private(request: Request) -> dict[str, str]:
+        return {"user_id": request.state.user_id}
+
+    for path in ("/test/conversation", "/api/configuration", "/api/request"):
+        secured_app.add_api_route(path, private, methods=["GET", "POST"])
+
+    @secured_app.websocket("/api/stream")
+    async def stream(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await websocket.send_text(websocket.state.user_id)
+        await websocket.close()
+
+    with TestClient(secured_app, base_url=config.app_url) as client:
+        for path in ("/test/conversation", "/api/configuration", "/api/request"):
+            assert client.get(path, headers={"X-Remote-User-Id": "forged"}).status_code == 403
+            assert client.post(path, headers={"Origin": "https://assistant.example"}).status_code == 403
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/api/stream", headers={"Origin": "https://assistant.example"}):
+                pass
+
+        secured_app.state.oauth.sessions["session"] = Session("user", OAuthTokens("access", "refresh", 1800), float("inf"), float("inf"))
+        client.cookies.set(SESSION_COOKIE, "session")
+        with patch("vtherm_assistant.oauth_flow.current_admin", new_callable=AsyncMock, return_value="user"):
+            for path in ("/test/conversation", "/api/configuration", "/api/request"):
+                assert client.get(path).json() == {"user_id": "user"}
+                assert client.post(path, headers={"Origin": "https://attacker.example"}).status_code == 403
+                assert client.post(path, headers={"Origin": "https://assistant.example"}).status_code == 200
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect("/api/stream", headers={"Origin": "https://attacker.example"}):
+                    pass
+            with client.websocket_connect("/api/stream", headers={"Origin": "https://assistant.example"}) as websocket:
+                assert websocket.receive_text() == "user"
