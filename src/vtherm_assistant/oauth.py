@@ -155,7 +155,11 @@ async def revoke_token(
 
 
 async def current_admin(config: OAuthConfig, access_token: str) -> str | None:
-    parts = urlsplit(config.ha_internal_url)
+    return await current_admin_for_url(config.ha_internal_url, access_token)
+
+
+async def current_admin_for_url(ha_internal_url: str, access_token: str) -> str | None:
+    parts = urlsplit(ha_internal_url)
     websocket_url = urlunsplit(("wss" if parts.scheme == "https" else "ws", parts.netloc, "/api/websocket", "", ""))
     try:
         async with asyncio.timeout(5):

@@ -4,14 +4,16 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.requests import HTTPConnection
 
-from .conversations import ConversationStore
+from .conversations import ConversationAgentFactory, ConversationRunner, ConversationStore
 from .ha_auth import verify_ingress_admin
+from .ha_mcp import HomeAssistantMCP
 from .models import ModelConfig, ModelRegistry
 from .oauth import OAuthConfig
-from .oauth_flow import OAuthFlow
+from .oauth_flow import SESSION_COOKIE, OAuthFlow
+from .redaction import redact_data
 from .storage import ModelConfigStore, PrivateDatabase, SecretStore
 
 FRONTEND = Path(__file__).parent / "frontend" / "index.html"
@@ -84,6 +86,26 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
     application.state.conversations = ConversationStore(database)
     application.state.secrets = SecretStore(database)
     application.state.models = ModelRegistry(ModelConfigStore(database), application.state.secrets)
+    if mode == "standalone":
+        oauth_config = oauth_config or OAuthConfig.from_environment()
+    ha_internal_url = oauth_config.ha_internal_url if oauth_config else os.environ.get("VTHERM_HA_INTERNAL_URL")
+    application.state.mcp = HomeAssistantMCP(ha_internal_url, application.state.secrets) if ha_internal_url else None
+    application.state.conversation_agent = ConversationAgentFactory(application.state.models, application.state.mcp) if application.state.mcp else None
+    application.state.conversation_runner = ConversationRunner(application.state.conversation_agent, application.state.conversations) if application.state.conversation_agent else None
+
+    def sensitive_values(request: Request) -> list[str]:
+        values = list(application.state.secrets.values(request.state.user_id))
+        supervisor_token = os.environ.get("SUPERVISOR_TOKEN")
+        if supervisor_token:
+            values.append(supervisor_token)
+        if oauth is not None:
+            session_key = request.cookies.get(SESSION_COOKIE)
+            if session_key:
+                values.append(session_key)
+            for key, session in oauth.sessions.items():
+                if session.user_id == request.state.user_id:
+                    values.extend((key, session.tokens.access_token, session.tokens.refresh_token))
+        return values
 
     def redact_secrets(user_id: str, value: str | None) -> str | None:
         if value is None:
@@ -96,7 +118,6 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
 
     oauth = None
     if mode == "standalone":
-        oauth_config = oauth_config or OAuthConfig.from_environment()
         if oauth_config is not None:
             oauth = OAuthFlow(oauth_config)
             application.state.oauth = oauth
@@ -111,7 +132,26 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
     def get_conversation(request: Request) -> JSONResponse:
         conversation = application.state.conversations.load(request.state.user_id)
         messages = conversation[0] if conversation else []
-        return JSONResponse({"messages": messages}, headers={"Cache-Control": "no-store"})
+        return JSONResponse({"messages": redact_data(messages, sensitive_values(request))}, headers={"Cache-Control": "no-store"})
+
+    @application.post("/api/conversation")
+    async def send_question(request: Request) -> Response:
+        if application.state.conversation_runner is None:
+            return JSONResponse({"detail": "Connexion Home Assistant non configurée"}, status_code=503, headers={"Cache-Control": "no-store"})
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict) or set(payload) != {"question"} or not isinstance(payload["question"], str) or not payload["question"].strip() or len(payload["question"]) > 4000:
+                raise ValueError
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "Question invalide"}, status_code=400, headers={"Cache-Control": "no-store"})
+        user_id = request.state.user_id
+        secrets = sensitive_values(request)
+
+        async def events():
+            async for event in application.state.conversation_runner.respond(user_id, payload["question"], secrets):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     @application.delete("/api/conversation", status_code=204)
     def new_conversation(request: Request) -> Response:

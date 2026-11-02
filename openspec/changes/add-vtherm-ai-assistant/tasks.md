@@ -35,8 +35,8 @@
 
 ## 5. MCP officiel et lecture seule
 
-- [ ] 5.1 Connecter le backend au seul serveur MCP officiel HA avec un jeton administrateur protégé ; tester l'authentification, les erreurs et la reconnexion sans présumer d'une délégation des droits ingress.
-- [ ] 5.2 Découvrir et autoriser explicitement les seules opérations de lecture vérifiées ; tester le refus côté serveur des commandes génériques, des outils VTherm d'écriture et des outils inconnus, même si le modèle tente de les appeler.
+- [x] 5.1 Connecter le backend au seul serveur MCP officiel HA avec un jeton administrateur protégé ; tester l'authentification, les erreurs et la reconnexion sans présumer d'une délégation des droits ingress.
+- [x] 5.2 Découvrir et autoriser explicitement les seules opérations de lecture vérifiées ; tester le refus côté serveur des commandes génériques, des outils VTherm d'écriture et des outils inconnus, même si le modèle tente de les appeler.
 - [ ] 5.3 Vérifier les droits, l'exposition des entités et les effets de bord des outils autorisés ; tester les entités non exposées, les accès refusés et l'absence de modification HA ou VTherm.
 - [ ] 5.4 Relever les capacités MCP et VTherm sur les versions prises en charge, y compris les dépendances et l'historique ; vérifier et documenter les outils disponibles, les lacunes et les données inaccessibles.
 - [x] 5.5 Fournir au responsable VTherm le contrat nécessaire pour l'outil d'historique en lecture seule : périodes et événements horodatés, pagination, droits et exposition, données manquantes et couverture des entités pertinentes ; vérifier que le contrat distingue les capacités existantes des évolutions nécessaires.
@@ -55,13 +55,13 @@
 
 ## 7. Conversation et configuration
 
-- [ ] 7.1 Créer la page de conversation avec saisie, réponses et état en cours ; tester une question, une réponse interrompue, un échec et sa relance.
+- [x] 7.1 Créer la page de conversation avec saisie, réponses et état en cours ; tester une question, une réponse interrompue, un échec et sa relance.
 - [ ] 7.2 Restaurer la dernière conversation et son contexte après navigation ou redémarrage ; tester une question de suivi et la reprise de chaque utilisateur autorisé.
-- [ ] 7.3 Ajouter l'action de nouvelle conversation reliée à la suppression locale ; tester que les messages et le contexte précédents ne sont plus repris.
-- [ ] 7.4 Créer une page distincte de configuration du fournisseur, du modèle, de l'URL et de la clé si nécessaire ; tester les quatre fournisseurs et le retour à la conversation sans perte des messages.
-- [ ] 7.5 Masquer les clés enregistrées et présenter les erreurs de configuration sans secret ; tester l'affichage, une clé invalide et un fournisseur inaccessible.
-- [ ] 7.6 Informer des données envoyées aux fournisseurs distants et de leur politique de conservation ; vérifier l'information lors de la configuration et son absence d'affirmation sur la suppression distante.
-- [ ] 7.7 Vérifier l'interface de conversation et de configuration sur ordinateur et mobile ; tester la lisibilité, la navigation et les états de chargement et d'erreur.
+- [x] 7.3 Ajouter l'action de nouvelle conversation reliée à la suppression locale ; tester que les messages et le contexte précédents ne sont plus repris.
+- [x] 7.4 Créer une page distincte de configuration du fournisseur, du modèle, de l'URL et de la clé si nécessaire ; tester les quatre fournisseurs et le retour à la conversation sans perte des messages.
+- [x] 7.5 Masquer les clés enregistrées et présenter les erreurs de configuration sans secret ; tester l'affichage, une clé invalide et un fournisseur inaccessible.
+- [x] 7.6 Informer des données envoyées aux fournisseurs distants et de leur politique de conservation ; vérifier l'information lors de la configuration et son absence d'affirmation sur la suppression distante.
+- [x] 7.7 Vérifier l'interface de conversation et de configuration sur ordinateur et mobile ; tester la lisibilité, la navigation et les états de chargement et d'erreur.
 
 ## 8. Déploiement et vérification intégrée
 

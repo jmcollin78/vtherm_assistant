@@ -14,8 +14,9 @@ python -m vtherm_assistant
 ```
 
 L'interface de développement est accessible à l'adresse <http://127.0.0.1:8765/>.
-Le projet est en cours de construction : la page est vide et aucune fonction de
-conversation ou de configuration n'est encore disponible.
+Le projet est en cours de construction. Les parcours authentifiés nécessitent
+la configuration Home Assistant décrite ci-dessous ; les fournisseurs et MCP
+n'ont été testés qu'avec des services simulés.
 
 Sur un Mac Apple Silicon, utiliser la même architecture pour Python et ses
 dépendances. Si le terminal fonctionne sous Rosetta (`uname -m` affiche
@@ -69,8 +70,8 @@ que la révocation HA est impossible.
 
 Un accès refusé renvoie `403` et le message « Accès refusé ». Les parcours sont
 actuellement couverts par des tests simulés, pas encore validés sur une
-installation Home Assistant réelle. L'interface de connexion et le paquet
-de déploiement autonome restent à réaliser.
+installation Home Assistant réelle. L'interface de connexion reste à vérifier
+sur cette installation ; le paquet de déploiement autonome reste à réaliser.
 
 ## Données locales
 
@@ -92,3 +93,29 @@ Les fournisseurs de modèles distants peuvent recevoir la conversation et les
 données d'installation nécessaires pour répondre. Leur conservation dépend
 de leur politique : un effacement local ne garantit pas leur suppression chez
 ces fournisseurs.
+
+## Accès MCP en développement
+
+Le client utilise uniquement le serveur MCP officiel à l'adresse
+`VTHERM_HA_INTERNAL_URL/api/mcp`. En mode ingress, définir également
+`VTHERM_HA_INTERNAL_URL` ; chaque utilisateur doit enregistrer séparément un
+jeton Home Assistant administrateur. L'identité ingress ne fournit pas ce jeton.
+Le client vérifie les droits du jeton avant chaque connexion.
+
+Les outils accessibles sont limités à `homeassistant__GetLiveContext`,
+`versatile_thermostat__list_vtherms`, `versatile_thermostat__get_status` et
+`versatile_thermostat__diagnose`. Les implémentations ont été examinées dans
+les sources de [Home Assistant 2026.10.0](https://github.com/home-assistant/core/blob/2026.10.0/homeassistant/components/homeassistant/llm.py)
+et de [VTherm 10.6.3](https://github.com/jmcollin78/versatile_thermostat/blob/10.6.3/custom_components/versatile_thermostat/llm.py),
+respectivement. Leur disponibilité et leur comportement réel restent à vérifier
+sur chaque installation et version. Les commandes et outils inconnus sont refusés.
+
+Ces sources décrivent un contexte des entités exposées à Assist, une liste de
+VTherm, leur état actuel et un diagnostic contenant des sections de leurs
+attributs. Le contexte HA ne couvre pas les scripts et calendriers ; les
+dépendances ne sont accessibles que si les outils et l'exposition les rendent
+disponibles. Aucun outil d'historique n'est fourni par VTherm 10.6.3 ; son
+[contrat proposé](docs/contrat-historique-mcp.md) reste à réaliser et vérifier.
+La conversation utilise ces outils via ADK et reprend les échanges récents de
+l'utilisateur. Les essais actuels reposent sur des services simulés : le
+fonctionnement avec les installations et fournisseurs réels reste à vérifier.

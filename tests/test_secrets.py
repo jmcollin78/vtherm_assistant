@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from vtherm_assistant.main import SUPERVISOR_ADDRESS, create_app
+from vtherm_assistant.redaction import StreamingRedactor
 from vtherm_assistant.storage import PrivateDatabase, SecretStore
 
 
@@ -54,3 +55,23 @@ def test_model_configuration_does_not_expose_a_saved_key(tmp_path) -> None:
         assert "secret-alice" not in client.get("/api/model", headers=headers).text
         application.state.models.configs.put("alice", "ollama", "model", "http://secret-alice:11434")
         assert "secret-alice" not in client.get("/api/model", headers=headers).text
+
+
+@pytest.mark.parametrize("fragments", [
+    ["token-alice"],
+    ["token-", "ali", "ce"],
+    ["to", "ken-alice", " et ", "api", "-key"],
+    ["token-alice et api-key"],
+])
+def test_streaming_redaction_masks_secrets_across_fragments(fragments) -> None:
+    redactor = StreamingRedactor(["token-alice", "api-key"])
+    output = "".join(redactor.feed(fragment) for fragment in fragments) + redactor.feed("", final=True)
+    assert "token-alice" not in output
+    assert "api-key" not in output
+    assert "[masqué]" in output
+
+
+def test_streaming_redaction_handles_overlapping_secrets_and_incomplete_prefix() -> None:
+    redactor = StreamingRedactor(["secret", "secret-long"])
+    output = redactor.feed("secret") + redactor.feed("-long et sec") + redactor.feed("", final=True)
+    assert output == "[masqué] et sec"

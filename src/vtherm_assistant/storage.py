@@ -50,6 +50,13 @@ class SecretStore:
             row = connection.execute("SELECT value FROM secrets WHERE user_id = ? AND name = ?", (user_id, name)).fetchone()
         return row[0] if row else None
 
+    def values(self, user_id: str) -> tuple[str, ...]:
+        if not user_id:
+            raise ValueError("Une identité vérifiée est requise")
+        with closing(self._connect()) as connection:
+            rows = connection.execute("SELECT value FROM secrets WHERE user_id = ?", (user_id,)).fetchall()
+        return tuple(row[0] for row in rows)
+
     def delete(self, user_id: str, name: str) -> None:
         if not user_id or not name:
             raise ValueError("Identité et nom requis")
