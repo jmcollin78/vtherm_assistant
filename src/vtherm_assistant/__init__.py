@@ -1,0 +1,1 @@
+"""Assistant conversationnel pour Versatile Thermostat."""

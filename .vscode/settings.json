@@ -1,5 +1,11 @@
 {
     "chat.tools.terminal.autoApprove": {
-        "rtk": true
+        "rtk": true,
+        "/^python3 --version$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "command": true,
+        "./.venv/bin/python": true
     }
 }

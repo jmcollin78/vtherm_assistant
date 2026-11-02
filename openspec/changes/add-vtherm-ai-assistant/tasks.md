@@ -2,14 +2,14 @@
 
 ## 1. Fondations
 
-- [ ] 1.1 Créer la structure du backend, de l'interface et des tests ; vérifier que les composants démarrent et que les tests de base s'exécutent.
-- [ ] 1.2 Ajouter Google ADK et les dépendances nécessaires ; vérifier leur installation et le démarrage sans clé de fournisseur.
-- [ ] 1.3 Documenter les prérequis de développement et les commandes de test ; vérifier leur exécution sur un environnement propre.
+- [x] 1.1 Créer la structure du backend, de l'interface et des tests ; vérifier que les composants démarrent et que les tests de base s'exécutent.
+- [x] 1.2 Ajouter Google ADK et les dépendances nécessaires ; vérifier leur installation et le démarrage sans clé de fournisseur.
+- [x] 1.3 Documenter les prérequis de développement et les commandes de test ; vérifier leur exécution sur un environnement propre.
 
 ## 2. Identité et accès
 
-- [ ] 2.1 Implémenter l'identification ingress sous HA OS et le contrôle de provenance Supervisor ; tester les en-têtes absents ou forgés et les accès directs refusés.
-- [ ] 2.2 Vérifier le statut actif et administrateur de l'utilisateur ingress auprès de HA ; tester les comptes non administrateurs, désactivés, supprimés et les erreurs de vérification.
+- [x] 2.1 Implémenter l'identification ingress sous HA OS et le contrôle de provenance Supervisor ; tester les en-têtes absents ou forgés et les accès directs refusés.
+- [x] 2.2 Vérifier le statut actif et administrateur de l'utilisateur ingress auprès de HA ; tester les comptes non administrateurs, désactivés, supprimés et les erreurs de vérification.
 - [ ] 2.3 Implémenter sous HA Container la connexion HA OAuth avec PKCE et la vérification d'identité et des droits ; tester les redirections, les tentatives de falsification et les accès refusés.
 - [ ] 2.4 Protéger les sessions et les jetons, gérer leur expiration et leur révocation ; tester l'isolation des utilisateurs et le refus après perte des droits ou déconnexion.
 - [ ] 2.5 Protéger les routes de conversation, de configuration et de requête ; tester qu'aucune donnée privée ni requête n'est accessible sans administrateur vérifié.
