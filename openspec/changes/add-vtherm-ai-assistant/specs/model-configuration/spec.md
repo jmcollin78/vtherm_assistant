@@ -18,7 +18,7 @@ L'app MUST proposer une page de configuration distincte de la page de conversati
 - **THEN** les messages de la conversation en cours restent affichés
 
 ### Requirement: Choix d'un modèle compatible
-Le système MUST permettre de configurer OpenAI, Claude (Anthropic), Gemini (Google) et Ollama dès la première version, avec une clé personnelle pour les fournisseurs distants et un modèle Ollama local compatible. Les modèles et versions effectivement pris en charge MUST être documentés et vérifiés.
+Le système MUST permettre de configurer OpenAI, Claude (Anthropic), Gemini (Google) et Ollama dès la première version, avec une clé personnelle pour les fournisseurs distants et un modèle Ollama local compatible.
 
 #### Scenario: Fournisseurs pris en charge
 - **WHEN** l'utilisateur choisit un fournisseur pour configurer l'assistant
@@ -31,6 +31,17 @@ Le système MUST permettre de configurer OpenAI, Claude (Anthropic), Gemini (Goo
 #### Scenario: Modèle local
 - **WHEN** l'utilisateur sélectionne un modèle local compatible qui ne nécessite pas de clé
 - **THEN** la configuration ne requiert pas de clé de fournisseur distant
+
+### Requirement: Compatibilité des générations de modèles
+Pour chaque gamme de chaque fournisseur, le système MUST prendre en charge la dernière génération et la précédente lorsqu'elles existent et sont compatibles. Les modèles et versions pris en charge MUST être vérifiés et documentés. La documentation MUST distinguer les modèles vérifiés compatibles, les incompatibilités connues et les modèles non encore vérifiés.
+
+#### Scenario: Générations d'une gamme
+- **WHEN** une gamme d'un fournisseur propose une dernière génération et une génération précédente compatibles avec l'assistant
+- **THEN** les deux générations sont prises en charge et leur compatibilité est vérifiée et documentée
+
+#### Scenario: Modèle incompatible ou non vérifié
+- **WHEN** un modèle d'une gamme, y compris une famille Ollama, est incompatible ou n'a pas encore été vérifié
+- **THEN** la documentation indique son incompatibilité connue ou son statut non vérifié, sans présenter ce dernier comme une incompatibilité
 
 ### Requirement: Protection des identifiants
 Le système MUST protéger les clés contre l'exposition dans l'interface de l'app, les réponses, les journaux et la configuration visible par des utilisateurs non autorisés.

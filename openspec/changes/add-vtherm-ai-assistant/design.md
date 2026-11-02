@@ -27,7 +27,7 @@ La [PR VTherm #2160](https://github.com/jmcollin78/versatile_thermostat/pull/216
 
 Une app Home Assistant héberge l'interface web et le traitement. Elle comporte une page de conversation et une page distincte de configuration du fournisseur et de ses paramètres. La dernière conversation de chaque utilisateur est restaurée à son retour dans l'app, y compris après un redémarrage ; un bouton permet d'effacer sa conversation et d'en commencer une nouvelle. Sous Home Assistant OS, l'accès passe par ingress et l'app peut être affichée dans la barre latérale, sans ajouter de carte aux tableaux de bord. L'interface permet de saisir les clés des fournisseurs mais ne les conserve pas ; le traitement les protège, contrôle l'accès aux sources, gère la conversation et dialogue avec le modèle. Cette solution évite la distribution et la configuration d'une carte, mais nécessite toujours une interface web et son backend.
 
-En première version, l'app réserve les conversations, la configuration et les requêtes aux administrateurs HA dont l'identité et les droits sont vérifiés. Sous HA OS, ingress peut transmettre l'identifiant via `X-Remote-User-Id` ; l'app n'accepte les connexions ingress que du Supervisor afin de ne pas faire confiance à des en-têtes forgés. Le statut administrateur doit être vérifié à partir d'une source HA fiable ; l'identifiant seul ne le démontre pas. Si l'identité ou les droits ne peuvent pas être vérifiés, aucune conversation sauvegardée n'est exposée et aucune requête n'est exécutée. Une interface vierge peut être affichée sans accès aux données privées. Vérifier ces garanties et les comportements des versions HA prises en charge ; sous Container, définir un mécanisme équivalent sans ingress.
+En première version, l'app réserve les conversations, la configuration et les requêtes aux administrateurs HA dont l'identité et les droits sont vérifiés. Sous HA OS, ingress peut transmettre l'identifiant via `X-Remote-User-Id` ; l'app n'accepte les connexions ingress que du Supervisor afin de ne pas faire confiance à des en-têtes forgés. Le statut administrateur doit être vérifié à partir d'une source HA fiable ; l'identifiant seul ne le démontre pas. Une piste consiste à consulter la liste des utilisateurs HA par WebSocket avec un accès administrateur protégé et à vérifier le compte correspondant, son activité et ses droits. Sous Container, chaque utilisateur se connecte à son compte HA par OAuth avec PKCE ; son identité et son statut administrateur sont vérifiés auprès de HA, notamment par `auth/current_user`. Les jetons et la session sont protégés et les accès sont refusés lorsque la session ou les droits ne sont plus valides. Si l'identité ou les droits ne peuvent pas être vérifiés, aucune conversation sauvegardée n'est exposée et aucune requête n'est exécutée. Une interface vierge peut être affichée sans accès aux données privées. Vérifier ces mécanismes, notamment les redirections OAuth, la révocation, l'isolation des sessions et le refus des en-têtes forgés, sur les versions HA prises en charge.
 
 ### Accès aux données et preuves
 
@@ -49,7 +49,7 @@ La dernière conversation et son contexte sont conservés localement dans un sto
 
 ### Modèles interchangeables
 
-Prendre en charge dès la première version OpenAI, Claude (Anthropic), Gemini (Google) et Ollama, avec une interface de fournisseur pour les modèles distants avec clé et les modèles locaux compatibles. La réutilisation des intégrations HA existantes ou la création d'adaptateurs dédiés reste à étudier. Le choix des adaptateurs et la prise en charge effective des appels d'outils, du français et d'un affichage progressif doivent être vérifiés par fournisseur et modèle ; tous les modèles individuels ne sont pas nécessairement compatibles. Une solution figée sur un fournisseur serait contraire au besoin.
+Prendre en charge dès la première version OpenAI, Claude (Anthropic), Gemini (Google) et Ollama, avec une interface de fournisseur pour les modèles distants avec clé et les modèles locaux compatibles. Pour chaque gamme de chaque fournisseur, viser la dernière génération et la précédente lorsqu'elle existe. La documentation distingue les modèles dont la compatibilité est vérifiée, les incompatibilités connues et les modèles non encore vérifiés, y compris pour Ollama. La réutilisation des intégrations HA existantes ou la création d'adaptateurs dédiés reste à étudier. Le choix des adaptateurs et la prise en charge effective des appels d'outils, du français et d'un affichage progressif doivent être vérifiés par fournisseur et modèle ; tous les modèles individuels ne sont pas nécessairement compatibles. Une solution figée sur un fournisseur serait contraire au besoin.
 
 ### Versions minimales
 
@@ -57,11 +57,11 @@ La première version cible Home Assistant 2026.10 ou ultérieur et Versatile The
 
 ### Orchestration agentique
 
-Pydantic AI et Google ADK sont les deux frameworks à privilégier pour l'évaluation de l'orchestration ; aucun choix définitif n'est arrêté. L'intérêt exprimé pour ADK sera pris en compte lors de cette évaluation. Comparer les candidats au moyen d'un prototype vérifiant les quatre fournisseurs, les appels d'outils et l'affichage progressif selon les modèles, ainsi que la connexion et l'authentification auprès du MCP officiel de Home Assistant. Évaluer aussi les dépendances, le déploiement dans l'app, la conservation de la dernière conversation et l'application effective des contrôles de lecture seule. La sécurité et la confidentialité restent sous la responsabilité de l'application quel que soit le framework retenu.
+Google ADK est retenu pour l'orchestration, sans prototype ni preuve de concept comparatifs. L'implémentation doit vérifier les quatre fournisseurs, les appels d'outils et l'affichage progressif selon les modèles, ainsi que la connexion et l'authentification auprès du MCP officiel de Home Assistant. Les dépendances, le déploiement dans l'app, la conservation de la dernière conversation et l'application effective des contrôles de lecture seule doivent également être vérifiés. La sécurité et la confidentialité restent sous la responsabilité de l'application.
 
 ### Déploiement selon l'installation HA
 
-L'app et ingress constituent le parcours retenu pour Home Assistant OS. Home Assistant Container ne dispose pas du système d'apps ni d'ingress : un déploiement autonome réutilisant le traitement et l'interface est à étudier, avec son propre mécanisme d'accès sécurisé et, si souhaité, une intégration distincte pour la barre latérale. Cette présence dans HA n'est pas automatique sous Container. Aucun accès entrant à HA depuis un fournisseur externe n'est requis : les appels vers les modèles distants sont initiés par le traitement local.
+L'app et ingress constituent le parcours retenu pour Home Assistant OS. Home Assistant Container ne dispose pas du système d'apps ni d'ingress : un déploiement autonome réutilisant le traitement et l'interface est à étudier, avec l'authentification OAuth HA de chaque utilisateur et, si souhaité, une intégration distincte pour la barre latérale. Cette présence dans HA n'est pas automatique sous Container. Aucun accès entrant à HA depuis un fournisseur externe n'est requis : les appels vers les modèles distants sont initiés par le traitement local.
 
 ## Risks / Trade-offs
 
@@ -71,7 +71,7 @@ L'app et ingress constituent le parcours retenu pour Home Assistant OS. Home Ass
 - [Identité ingress absente ou statut administrateur invérifiable] → Refuser l'accès aux données privées et les requêtes ; tester la vérification et l'isolation par utilisateur sur les versions prises en charge.
 - [Jeton MCP administrateur partagé] → Réserver l'app aux administrateurs vérifiés, protéger le jeton et appliquer les restrictions de lecture seule côté serveur sans supposer une délégation des droits individuels.
 - [Couverture insuffisante du MCP officiel] → Vérifier les outils disponibles, faire évoluer ceux de VTherm lorsque c'est possible et signaler les données qui restent inaccessibles.
-- [Absence d'apps et d'ingress sous Container] → Définir un parcours distinct sans promettre une entrée automatique dans la barre latérale.
+- [Absence d'apps et d'ingress sous Container] → Vérifier le parcours OAuth distinct et sa sécurité sans promettre une entrée automatique dans la barre latérale.
 - [Données envoyées à un modèle externe] → Informer l'utilisateur et limiter le contexte transmis ; ne pas promettre la politique de conservation du fournisseur.
 - [Latence ou coûts du modèle] → Mesurer la latence et limiter le contexte ; étudier l'affichage progressif et l'état d'attente sans promettre un temps de réponse donné.
 - [Variabilité des plugins et modèles] → Tester une matrice explicite de versions et signaler les éléments non pris en charge.
@@ -82,8 +82,7 @@ Projet neuf : aucune migration de données n'est prévue. L'installation devra p
 
 ## Open Questions
 
-- Quel framework d'orchestration choisir entre Pydantic AI et Google ADK après évaluation et prototype ?
-- Comment vérifier de façon fiable l'identité et le statut administrateur sur les versions HA prises en charge, et quel parcours sécurisé équivalent est adapté à Container ?
-- Quels modèles pour chacun des quatre fournisseurs retenus constituent la première matrice de compatibilité ?
+- Comment valider les mécanismes d'identité et de vérification des droits sous HA OS et Container sur les versions prises en charge, notamment les redirections OAuth, la révocation et l'isolation des sessions ?
+- Quels modèles et versions de chaque gamme des quatre fournisseurs sont compatibles avec l'assistant, et quelles incompatibilités doivent être documentées ?
 - Quels outils du MCP officiel exposent effectivement les règles des plugins ciblés et l'historique utile, et quelles évolutions VTherm sont nécessaires ?
 - Quelles limites de contexte conviennent pour exploiter l'historique disponible ?
