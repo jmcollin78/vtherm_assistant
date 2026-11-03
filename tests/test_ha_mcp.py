@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -18,7 +19,7 @@ from vtherm_assistant.models import ModelConfig, ModelRegistry
 from vtherm_assistant.storage import ModelConfigStore, PrivateDatabase, SecretStore
 
 
-def test_mcp_authenticates_with_each_users_token_and_reconnects(tmp_path) -> None:
+def test_mcp_authenticates_with_each_users_token_and_reconnects(tmp_path, caplog) -> None:
     secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
     secrets.put("alice", "home_assistant", "alice-token")
     secrets.put("bob", "home_assistant", "bob-token")
@@ -26,6 +27,7 @@ def test_mcp_authenticates_with_each_users_token_and_reconnects(tmp_path) -> Non
 
     async def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        logging.getLogger("mcp.client").warning("Authorization: %s", request.headers["authorization"])
         body = json.loads(request.content)
         if body["method"] == "initialize":
             return httpx.Response(200, json={
@@ -45,6 +47,8 @@ def test_mcp_authenticates_with_each_users_token_and_reconnects(tmp_path) -> Non
     assert len(initializations) == 2
     assert [request.headers["authorization"] for request in initializations] == ["Bearer alice-token", "Bearer bob-token"]
     assert all(str(request.url) == "http://homeassistant:8123/api/mcp" for request in initializations)
+    assert "alice-token" not in caplog.text
+    assert "bob-token" not in caplog.text
 
 
 def test_mcp_fails_closed_without_a_token_or_when_authentication_fails(tmp_path, caplog) -> None:

@@ -10,7 +10,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, Tool
 
 from .oauth import _validate_base_url, current_admin_for_url
-from .redaction import redact_data
+from .redaction import protect_logs, redact_data
 from .storage import SecretStore
 
 
@@ -82,7 +82,7 @@ class HomeAssistantMCP:
         try:
             if await current_admin_for_url(self.base_url, token) is None:
                 raise MCPConnectionError("Jeton Home Assistant non autorisé")
-            async with httpx.AsyncClient(
+            async with protect_logs(self.secrets.values(user_id)), httpx.AsyncClient(
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=httpx.Timeout(10, read=30),
                 follow_redirects=False,

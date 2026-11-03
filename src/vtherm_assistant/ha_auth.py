@@ -5,6 +5,8 @@ import os
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
+from .redaction import protect_logs
+
 SUPERVISOR_WEBSOCKET = "ws://supervisor/core/websocket"
 ADMIN_GROUP = "system-admin"
 
@@ -15,7 +17,7 @@ async def verify_ingress_admin(user_id: str) -> bool:
         return False
 
     try:
-        async with asyncio.timeout(5):
+        async with protect_logs((token,)), asyncio.timeout(5):
             async with connect(SUPERVISOR_WEBSOCKET, proxy=None, close_timeout=1) as websocket:
                 greeting = json.loads(await websocket.recv())
                 if not isinstance(greeting, dict) or greeting.get("type") != "auth_required":

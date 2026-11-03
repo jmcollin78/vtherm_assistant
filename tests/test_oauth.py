@@ -2,6 +2,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlsplit
 
@@ -45,7 +46,7 @@ def test_internal_ha_url_accepts_https() -> None:
     assert config.ha_internal_url == "https://homeassistant:8123/"
 
 
-def test_code_exchange_uses_internal_url_and_verifier() -> None:
+def test_code_exchange_uses_internal_url_and_verifier(caplog) -> None:
     config = OAuthConfig("https://assistant.example", "https://ha.example", "http://homeassistant:8123")
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -55,12 +56,15 @@ def test_code_exchange_uses_internal_url_and_verifier() -> None:
         assert body["code"] == ["authorization-code"]
         assert body["code_verifier"] == ["verifier-value"]
         assert request.headers.get("authorization") is None
+        logging.getLogger("authlib.oauth2").warning("Received secret-access secret-refresh")
         return httpx.Response(200, json={"access_token": "secret-access", "refresh_token": "secret-refresh", "token_type": "Bearer", "expires_in": 1800})
 
     tokens = asyncio.run(exchange_code(config, "authorization-code", "verifier-value", transport=httpx.MockTransport(handle)))
     assert tokens.access_token == "secret-access"
     assert "secret-access" not in repr(tokens)
     assert "secret-refresh" not in repr(tokens)
+    assert "secret-access" not in caplog.text
+    assert "secret-refresh" not in caplog.text
 
 
 def test_invalid_token_response_is_rejected() -> None:

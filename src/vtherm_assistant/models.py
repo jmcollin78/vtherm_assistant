@@ -1,8 +1,5 @@
-import logging
-import traceback
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
-from contextvars import ContextVar
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -11,41 +8,19 @@ from google.adk.models import Gemini, LlmRequest, LlmResponse
 from google.adk.models.base_llm import BaseLlmConnection
 from google.adk.models.lite_llm import LiteLlm
 
+from .redaction import protect_logs
 from .storage import ModelConfigStore, SecretStore
-
-
-_provider_secret: ContextVar[str | None] = ContextVar("provider_secret", default=None)
-_original_record_factory = logging.getLogRecordFactory()
-
-
-def _protected_record_factory(*args, **kwargs):
-    record = _original_record_factory(*args, **kwargs)
-    secret = _provider_secret.get()
-    if secret:
-        record.msg = record.getMessage().replace(secret, "[masqué]")
-        record.args = ()
-        if record.exc_info:
-            record.exc_text = "".join(traceback.format_exception(*record.exc_info)).replace(secret, "[masqué]")
-            record.exc_info = None
-        if record.stack_info:
-            record.stack_info = record.stack_info.replace(secret, "[masqué]")
-    return record
-
-
-logging.setLogRecordFactory(_protected_record_factory)
 
 
 async def _protected_responses(responses: AsyncIterator[LlmResponse], secret: str | None) -> AsyncIterator[LlmResponse]:
     while True:
-        token = _provider_secret.set(secret)
         try:
-            response = await anext(responses)
+            async with protect_logs((secret,)):
+                response = await anext(responses)
         except StopAsyncIteration:
             return
         except Exception:
             raise RuntimeError("La requête au fournisseur a échoué") from None
-        finally:
-            _provider_secret.reset(token)
         yield response
 
 

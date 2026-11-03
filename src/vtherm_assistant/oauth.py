@@ -11,6 +11,8 @@ from authlib.oauth2.client import OAuth2Client
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
+from .redaction import protect_logs
+
 
 def _validate_base_url(url: str, *, public: bool) -> str:
     parts = urlsplit(url)
@@ -79,7 +81,7 @@ async def exchange_code(
     config: OAuthConfig, code: str, verifier: str, *, transport: httpx.AsyncBaseTransport | None = None
 ) -> OAuthTokens:
     try:
-        async with AsyncOAuth2Client(
+        async with protect_logs((code, verifier)), AsyncOAuth2Client(
             client_id=config.app_url,
             redirect_uri=config.app_url + "auth/callback",
             token_endpoint_auth_method="none",
@@ -122,7 +124,7 @@ async def refresh_access_token(
     config: OAuthConfig, refresh_token: str, *, transport: httpx.AsyncBaseTransport | None = None
 ) -> OAuthTokens:
     try:
-        async with AsyncOAuth2Client(
+        async with protect_logs((refresh_token,)), AsyncOAuth2Client(
             client_id=config.app_url,
             token_endpoint_auth_method="none",
             transport=transport,
@@ -140,7 +142,7 @@ async def revoke_token(
     config: OAuthConfig, refresh_token: str, *, transport: httpx.AsyncBaseTransport | None = None
 ) -> None:
     try:
-        async with AsyncOAuth2Client(
+        async with protect_logs((refresh_token,)), AsyncOAuth2Client(
             client_id=config.app_url,
             token_endpoint_auth_method="none",
             transport=transport,
@@ -162,7 +164,7 @@ async def current_admin_for_url(ha_internal_url: str, access_token: str) -> str 
     parts = urlsplit(ha_internal_url)
     websocket_url = urlunsplit(("wss" if parts.scheme == "https" else "ws", parts.netloc, "/api/websocket", "", ""))
     try:
-        async with asyncio.timeout(5):
+        async with protect_logs((access_token,)), asyncio.timeout(5):
             async with connect(websocket_url, proxy=None, close_timeout=1) as websocket:
                 greeting = json.loads(await websocket.recv())
                 if not isinstance(greeting, dict) or greeting.get("type") != "auth_required":

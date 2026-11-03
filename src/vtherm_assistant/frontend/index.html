@@ -1,169 +1,801 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>VTherm Assistant</title>
-    <style>
-      :root { color-scheme: light; --ink: #20302d; --muted: #62706b; --line: #dce4df; --paper: #f7f9f7; --green: #276451; --dark: #173c32; --accent: #c97b53; --error: #a63e36; }
-      * { box-sizing: border-box; }
-      body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.5 "Avenir Next", "Trebuchet MS", sans-serif; }
-      button, input, select, textarea { font: inherit; }
-      button { cursor: pointer; }
-      button:disabled { cursor: default; opacity: .48; }
-      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid #e1a98a; outline-offset: 2px; }
-      .app { height: 100dvh; display: flex; flex-direction: column; }
-      .header { flex: 0 0 auto; background: #fff; border-bottom: 1px solid var(--line); }
-      .header-inner { max-width: 1100px; min-height: 72px; margin: auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-      .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-      .brand-mark { width: 35px; height: 35px; display: grid; place-items: center; background: var(--dark); color: #fff; font: bold 18px Georgia, serif; border-radius: 6px; }
-      .brand-name { font: bold 19px Georgia, serif; white-space: nowrap; }
-      .brand-subtitle { color: var(--muted); font-size: 12px; }
-      .header-actions { display: flex; align-items: center; gap: 8px; }
-      .status { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 12px; white-space: nowrap; margin-right: 10px; }
-      .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #4a9b79; }
-      .button { border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); padding: 8px 12px; font-size: 13px; font-weight: 600; }
-      .button:hover { background: #f1f5f2; }
-      .button.primary { background: var(--dark); border-color: var(--dark); color: #fff; }
-      .button.primary:hover { background: var(--green); }
-      .button.icon { width: 38px; height: 38px; padding: 0; display: inline-grid; place-items: center; font-size: 20px; }
-      .main { flex: 1; min-height: 0; display: flex; }
-      .conversation { width: 100%; max-width: 870px; margin: 0 auto; min-height: 0; display: flex; flex-direction: column; }
-      .conversation-top { padding: 24px 24px 12px; border-bottom: 1px solid var(--line); }
-      .eyebrow { color: var(--green); font-size: 11px; font-weight: 700; text-transform: uppercase; }
-      h1, h2, p { margin: 0; }
-      h1 { margin-top: 3px; font: 26px/1.2 Georgia, serif; }
-      .messages { flex: 1; overflow-y: auto; padding: 24px; }
-      .empty { color: var(--muted); text-align: center; padding: 48px 0; }
-      .empty strong { display: block; color: var(--ink); font: 20px Georgia, serif; margin-bottom: 8px; }
-      .message { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 13px; margin-bottom: 27px; }
-      .avatar { width: 34px; height: 34px; border-radius: 5px; display: grid; place-items: center; background: #e4eee8; color: var(--dark); font: bold 15px Georgia, serif; }
-      .message.user .avatar { background: #f4e7df; color: #8c4f34; }
-      .message-label { font-weight: 700; font-size: 12px; margin: 1px 0 5px; }
-      .message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-      .message-state { font-size: 12px; color: var(--muted); margin-top: 7px; }
-      .message-state.error { color: var(--error); }
-      .retry { border: 0; padding: 0; background: none; color: var(--green); font-size: 12px; font-weight: 700; text-decoration: underline; }
-      .composer { flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--paper); padding: 16px 24px 20px; }
-      .composer-box { display: flex; align-items: flex-end; gap: 12px; background: #fff; border: 1px solid #b9cbc0; border-radius: 7px; padding: 10px; }
-      textarea { resize: none; flex: 1; min-width: 0; min-height: 48px; max-height: 140px; border: 0; outline: 0; padding: 7px; background: transparent; }
-      .composer-foot { color: var(--muted); font-size: 11px; padding-top: 7px; }
-      .settings { overflow-y: auto; width: 100%; }
-      .settings-inner { max-width: 760px; padding: 32px 24px 56px; margin: auto; }
-      .settings-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
-      .settings-section { border-top: 1px solid var(--line); padding: 24px 0; }
-      .settings-section h2 { font: 20px Georgia, serif; margin-bottom: 6px; }
-      .settings-section p { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-      label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px; }
-      input, select { width: 100%; border: 1px solid #bdcbc3; border-radius: 5px; padding: 10px; color: var(--ink); background: #fff; }
-      .field { margin-bottom: 16px; min-width: 0; }
-      .field-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-      .privacy { border-left: 3px solid var(--accent); background: #f8f0eb; padding: 12px 14px; color: #5e4d44; font-size: 13px; margin: 4px 0 18px; }
-      .feedback { min-height: 22px; color: var(--green); font-size: 13px; margin-top: 10px; }
-      .feedback.error { color: var(--error); }
-      .login { margin: auto; padding: 32px; text-align: center; }
-      .login a { color: var(--green); }
-      [hidden] { display: none !important; }
-      @media (max-width: 600px) {
-        .header-inner { padding: 10px 14px; min-height: 64px; }
-        .brand-subtitle, .status { display: none; }
-        .brand-name { font-size: 17px; }
-        .header-actions .new-label { display: none; }
-        .header-actions .new-button { width: 38px; height: 38px; padding: 0; font-size: 20px; }
-        .conversation-top { padding: 18px 16px 10px; }
-        .messages { padding: 20px 16px; }
-        .composer { padding: 12px 16px 16px; }
-        .settings-inner { padding: 24px 16px 40px; }
-        .grid { grid-template-columns: 1fr; gap: 0; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="app">
-      <header class="header"><div class="header-inner">
-        <div class="brand"><div class="brand-mark" aria-hidden="true">V</div><div><div class="brand-name">VTherm Assistant</div><div class="brand-subtitle">Versatile Thermostat</div></div></div>
-        <div class="header-actions" id="header-actions" hidden><span class="status">Lecture seule</span><button class="button new-button" id="new" title="Nouvelle conversation" aria-label="Nouvelle conversation">+ <span class="new-label">Nouvelle conversation</span></button><button class="button icon" id="settings-button" title="Configuration" aria-label="Configuration">&#9881;</button></div>
-      </div></header>
-      <main class="main">
-        <section class="conversation" id="conversation" hidden aria-label="Conversation">
-          <div class="conversation-top"><div class="eyebrow">Assistant chauffage</div><h1>Conversation</h1></div>
-          <div class="messages" id="messages" aria-live="polite"></div>
-          <form class="composer" id="composer"><div class="composer-box"><textarea id="question" maxlength="4000" rows="2" aria-label="Votre question" placeholder="Posez une question sur votre installation…" required></textarea><button class="button primary" id="send" type="submit">Envoyer</button></div><div class="composer-foot">Les réponses dépendent des données accessibles à Home Assistant.</div></form>
-        </section>
-        <section class="settings" id="settings" hidden aria-label="Configuration"><div class="settings-inner">
-          <div class="settings-heading"><div><div class="eyebrow">Préférences</div><h1>Configuration</h1></div><button class="button" id="back">Retour à la conversation</button></div>
-          <form id="model-form" class="settings-section"><h2>Modèle</h2><p>Choisissez le fournisseur et le modèle de cette conversation.</p>
-            <div class="grid"><div class="field"><label for="provider">Fournisseur</label><select id="provider"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="ollama">Ollama</option></select></div><div class="field"><label for="model">Modèle</label><input id="model" required autocomplete="off" placeholder="Nom du modèle"></div></div>
-            <div class="field" id="url-field" hidden><label for="url">URL Ollama</label><input id="url" type="url" placeholder="http://ollama:11434" autocomplete="off"></div>
-            <div class="field" id="key-field"><label for="provider-key">Clé du fournisseur</label><input id="provider-key" type="password" autocomplete="new-password" placeholder="Non modifiée"></div>
-            <div class="privacy" id="privacy">Le fournisseur reçoit les échanges et les données de l'installation nécessaires à la réponse. Leur conservation dépend de sa politique.</div>
-            <div class="field-actions"><button class="button primary" type="submit">Enregistrer</button><button class="button" id="delete-key" type="button">Supprimer la clé</button></div><div class="feedback" id="model-feedback" role="status"></div>
-          </form>
-          <form id="ha-form" class="settings-section"><h2>Home Assistant</h2><p>Jeton d'accès administrateur pour le serveur MCP officiel.</p><div class="field"><label for="ha-key">Jeton Home Assistant</label><input id="ha-key" type="password" autocomplete="new-password" placeholder="Non modifié"></div><div class="field-actions"><button class="button primary" type="submit">Enregistrer le jeton</button><button class="button" id="delete-ha-key" type="button">Supprimer le jeton</button></div><div class="feedback" id="ha-feedback" role="status"></div></form>
-        </div></section>
-        <section class="login" id="login" hidden><h1>Connexion requise</h1><p>Un compte administrateur Home Assistant est nécessaire.</p><a href="auth/login">Se connecter</a></section>
-      </main>
-    </div>
-    <script>
-      const byId = id => document.getElementById(id);
-      const conversation = byId("conversation"), settings = byId("settings"), messages = byId("messages");
-      const question = byId("question"), send = byId("send"), provider = byId("provider");
-      let controller = null;
-      const request = (path, options = {}) => fetch(path, { ...options, headers: { "X-VTherm-Request": "1", ...(options.headers || {}) }, cache: "no-store" });
-      const jsonOptions = (method, value) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
-      function feedback(id, text, error = false) { const element = byId(id); element.textContent = text; element.classList.toggle("error", error); }
-      function setProviderFields() { const local = provider.value === "ollama"; byId("url-field").hidden = !local; byId("key-field").hidden = local; byId("privacy").hidden = local; byId("delete-key").hidden = local; byId("provider-key").value = ""; }
-      function addMessage(role, text) {
-        const empty = messages.querySelector(".empty"); if (empty) empty.remove();
-        const row = document.createElement("article"); row.className = `message ${role}`;
-        const avatar = document.createElement("div"); avatar.className = "avatar"; avatar.textContent = role === "user" ? "V" : "A"; avatar.setAttribute("aria-hidden", "true");
-        const content = document.createElement("div"), label = document.createElement("div"), body = document.createElement("div"), state = document.createElement("div");
-        label.className = "message-label"; label.textContent = role === "user" ? "Vous" : "Assistant";
-        body.className = "message-text"; body.textContent = text; state.className = "message-state";
-        content.append(label, body, state); row.append(avatar, content); messages.append(row); messages.scrollTop = messages.scrollHeight;
-        return { row, body, state };
-      }
-      function showEmpty() { if (!messages.children.length) { const empty = document.createElement("div"); empty.className = "empty"; const title = document.createElement("strong"); title.textContent = "Aucune conversation"; empty.append(title); messages.append(empty); } }
-      async function loadConversation() {
-        const response = await request("api/conversation");
-        if (response.status === 403) { byId("login").hidden = false; return; }
-        if (!response.ok) throw new Error("Impossible de charger la conversation.");
-        const data = await response.json(); messages.replaceChildren();
-        for (const message of data.messages) if (["user", "assistant"].includes(message.role) && typeof message.text === "string") addMessage(message.role, message.text);
-        showEmpty(); conversation.hidden = false; byId("header-actions").hidden = false;
-      }
-      async function submitQuestion(text) {
-        if (controller || !text.trim()) return;
-        question.value = ""; addMessage("user", text); const answer = addMessage("assistant", ""); answer.state.textContent = "Réponse en cours…";
-        controller = new AbortController(); send.disabled = true;
-        let complete = false, failure = "La réponse a été interrompue.";
-        try {
-          const response = await request("api/conversation", { ...jsonOptions("POST", { question: text }), signal: controller.signal });
-          if (!response.ok || !response.body) throw new Error("Impossible de lancer la réponse.");
-          const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = "";
-          while (true) {
-            const chunk = await reader.read(); buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
-            const lines = buffer.split("\n"); buffer = lines.pop();
-            for (const line of lines) if (line) { const event = JSON.parse(line); if (event.type === "delta") { answer.body.textContent += event.text; messages.scrollTop = messages.scrollHeight; } else if (event.type === "notice") answer.state.textContent = event.message; else if (event.type === "error") failure = event.message; else if (event.type === "complete") complete = true; }
-            if (chunk.done) break;
-          }
-        } catch (error) { if (error.name === "AbortError") return; }
-        finally { controller = null; send.disabled = false; }
-        if (complete) answer.state.textContent = "";
-        else { answer.state.classList.add("error"); answer.state.textContent = `${failure} `; const retry = document.createElement("button"); retry.className = "retry"; retry.type = "button"; retry.textContent = "Réessayer"; retry.onclick = () => { answer.row.previousElementSibling?.remove(); answer.row.remove(); submitQuestion(text); }; answer.state.append(retry); }
-      }
-      byId("composer").onsubmit = event => { event.preventDefault(); submitQuestion(question.value); };
-      question.onkeydown = event => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); byId("composer").requestSubmit(); } };
-      byId("new").onclick = async () => { if (controller) controller.abort(); const response = await request("api/conversation", { method: "DELETE" }); if (response.ok) { messages.replaceChildren(); showEmpty(); conversation.hidden = false; settings.hidden = true; } };
-      byId("settings-button").onclick = async () => { conversation.hidden = true; settings.hidden = false; const response = await request("api/model"); if (response.ok) { const model = await response.json(); if (model) { provider.value = model.provider; byId("model").value = model.model; byId("url").value = model.url || ""; } } setProviderFields(); };
-      byId("back").onclick = () => { settings.hidden = true; conversation.hidden = false; };
-      provider.onchange = setProviderFields;
-      byId("model-form").onsubmit = async event => { event.preventDefault(); const local = provider.value === "ollama"; const result = await request("api/model", jsonOptions("PUT", { provider: provider.value, model: byId("model").value.trim(), url: local ? byId("url").value.trim() : null })); if (!result.ok) { feedback("model-feedback", "Configuration invalide.", true); return; } const key = byId("provider-key").value; if (!local && key) { const saved = await request(`api/secrets/${provider.value}`, jsonOptions("PUT", { value: key })); if (!saved.ok) { feedback("model-feedback", "Modèle enregistré, mais clé non enregistrée.", true); return; } } byId("provider-key").value = ""; feedback("model-feedback", "Configuration enregistrée."); };
-      byId("delete-key").onclick = async () => { const result = await request(`api/secrets/${provider.value}`, { method: "DELETE" }); byId("provider-key").value = ""; feedback("model-feedback", result.ok ? "Clé supprimée." : "Suppression impossible.", !result.ok); };
-      byId("ha-form").onsubmit = async event => { event.preventDefault(); const result = await request("api/secrets/home_assistant", jsonOptions("PUT", { value: byId("ha-key").value })); byId("ha-key").value = ""; feedback("ha-feedback", result.ok ? "Jeton enregistré." : "Jeton non enregistré.", !result.ok); };
-      byId("delete-ha-key").onclick = async () => { const result = await request("api/secrets/home_assistant", { method: "DELETE" }); byId("ha-key").value = ""; feedback("ha-feedback", result.ok ? "Jeton supprimé." : "Suppression impossible.", !result.ok); };
-      loadConversation().catch(() => { byId("login").hidden = false; byId("login").querySelector("p").textContent = "Impossible de charger l'application."; });
-    </script>
-  </body>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>VTherm Assistant</title>
+        <style>
+            :root {
+                color-scheme: light;
+                --ink: #20302d;
+                --muted: #62706b;
+                --line: #dce4df;
+                --paper: #f7f9f7;
+                --green: #276451;
+                --dark: #173c32;
+                --accent: #c97b53;
+                --error: #a63e36;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                color: var(--ink);
+                background: var(--paper);
+                font:
+                    15px/1.5 "Avenir Next",
+                    "Trebuchet MS",
+                    sans-serif;
+            }
+            button,
+            input,
+            select,
+            textarea {
+                font: inherit;
+            }
+            button {
+                cursor: pointer;
+            }
+            button:disabled {
+                cursor: default;
+                opacity: 0.48;
+            }
+            button:focus-visible,
+            input:focus-visible,
+            select:focus-visible,
+            textarea:focus-visible,
+            a:focus-visible {
+                outline: 3px solid #e1a98a;
+                outline-offset: 2px;
+            }
+            .app {
+                height: 100dvh;
+                display: flex;
+                flex-direction: column;
+            }
+            .header {
+                flex: 0 0 auto;
+                background: #fff;
+                border-bottom: 1px solid var(--line);
+            }
+            .header-inner {
+                max-width: 1100px;
+                min-height: 72px;
+                margin: auto;
+                padding: 12px 24px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+            }
+            .brand {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                min-width: 0;
+            }
+            .brand-mark {
+                width: 35px;
+                height: 35px;
+                display: grid;
+                place-items: center;
+                background: var(--dark);
+                color: #fff;
+                font:
+                    bold 18px Georgia,
+                    serif;
+                border-radius: 6px;
+            }
+            .brand-name {
+                font:
+                    bold 19px Georgia,
+                    serif;
+                white-space: nowrap;
+            }
+            .brand-subtitle {
+                color: var(--muted);
+                font-size: 12px;
+            }
+            .header-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .status {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--green);
+                font-size: 12px;
+                white-space: nowrap;
+                margin-right: 10px;
+            }
+            .status::before {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: #4a9b79;
+            }
+            .button {
+                border: 1px solid var(--line);
+                border-radius: 5px;
+                background: #fff;
+                color: var(--ink);
+                padding: 8px 12px;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            .button:hover {
+                background: #f1f5f2;
+            }
+            .button.primary {
+                background: var(--dark);
+                border-color: var(--dark);
+                color: #fff;
+            }
+            .button.primary:hover {
+                background: var(--green);
+            }
+            .button.icon {
+                width: 38px;
+                height: 38px;
+                padding: 0;
+                display: inline-grid;
+                place-items: center;
+                font-size: 20px;
+            }
+            .main {
+                flex: 1;
+                min-height: 0;
+                display: flex;
+            }
+            .conversation {
+                width: 100%;
+                max-width: 870px;
+                margin: 0 auto;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+            }
+            .conversation-top {
+                padding: 24px 24px 12px;
+                border-bottom: 1px solid var(--line);
+            }
+            .eyebrow {
+                color: var(--green);
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+            }
+            h1,
+            h2,
+            p {
+                margin: 0;
+            }
+            h1 {
+                margin-top: 3px;
+                font:
+                    26px/1.2 Georgia,
+                    serif;
+            }
+            .messages {
+                flex: 1;
+                overflow-y: auto;
+                padding: 24px;
+            }
+            .empty {
+                color: var(--muted);
+                text-align: center;
+                padding: 48px 0;
+            }
+            .empty strong {
+                display: block;
+                color: var(--ink);
+                font:
+                    20px Georgia,
+                    serif;
+                margin-bottom: 8px;
+            }
+            .message {
+                display: grid;
+                grid-template-columns: 34px minmax(0, 1fr);
+                gap: 13px;
+                margin-bottom: 27px;
+            }
+            .avatar {
+                width: 34px;
+                height: 34px;
+                border-radius: 5px;
+                display: grid;
+                place-items: center;
+                background: #e4eee8;
+                color: var(--dark);
+                font:
+                    bold 15px Georgia,
+                    serif;
+            }
+            .message.user .avatar {
+                background: #f4e7df;
+                color: #8c4f34;
+            }
+            .message-label {
+                font-weight: 700;
+                font-size: 12px;
+                margin: 1px 0 5px;
+            }
+            .message-text {
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+            }
+            .message-state {
+                font-size: 12px;
+                color: var(--muted);
+                margin-top: 7px;
+            }
+            .message-state.error {
+                color: var(--error);
+            }
+            .retry {
+                border: 0;
+                padding: 0;
+                background: none;
+                color: var(--green);
+                font-size: 12px;
+                font-weight: 700;
+                text-decoration: underline;
+            }
+            .composer {
+                flex: 0 0 auto;
+                border-top: 1px solid var(--line);
+                background: var(--paper);
+                padding: 16px 24px 20px;
+            }
+            .composer-box {
+                display: flex;
+                align-items: flex-end;
+                gap: 12px;
+                background: #fff;
+                border: 1px solid #b9cbc0;
+                border-radius: 7px;
+                padding: 10px;
+            }
+            textarea {
+                resize: none;
+                flex: 1;
+                min-width: 0;
+                min-height: 48px;
+                max-height: 140px;
+                border: 0;
+                outline: 0;
+                padding: 7px;
+                background: transparent;
+            }
+            .composer-foot {
+                color: var(--muted);
+                font-size: 11px;
+                padding-top: 7px;
+            }
+            .settings {
+                overflow-y: auto;
+                width: 100%;
+            }
+            .settings-inner {
+                max-width: 760px;
+                padding: 32px 24px 56px;
+                margin: auto;
+            }
+            .settings-heading {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 16px;
+                margin-bottom: 28px;
+            }
+            .settings-section {
+                border-top: 1px solid var(--line);
+                padding: 24px 0;
+            }
+            .settings-section h2 {
+                font:
+                    20px Georgia,
+                    serif;
+                margin-bottom: 6px;
+            }
+            .settings-section p {
+                color: var(--muted);
+                font-size: 13px;
+                margin-bottom: 18px;
+            }
+            .grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+            }
+            label {
+                display: block;
+                font-size: 12px;
+                font-weight: 700;
+                margin-bottom: 6px;
+            }
+            input,
+            select {
+                width: 100%;
+                border: 1px solid #bdcbc3;
+                border-radius: 5px;
+                padding: 10px;
+                color: var(--ink);
+                background: #fff;
+            }
+            .field {
+                margin-bottom: 16px;
+                min-width: 0;
+            }
+            .field-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .privacy {
+                border-left: 3px solid var(--accent);
+                background: #f8f0eb;
+                padding: 12px 14px;
+                color: #5e4d44;
+                font-size: 13px;
+                margin: 4px 0 18px;
+            }
+            .feedback {
+                min-height: 22px;
+                color: var(--green);
+                font-size: 13px;
+                margin-top: 10px;
+            }
+            .feedback.error {
+                color: var(--error);
+            }
+            .app-feedback {
+                max-width: 1100px;
+                margin: auto;
+                padding: 0 24px 12px;
+                overflow-wrap: anywhere;
+            }
+            .app-feedback:empty {
+                display: none;
+            }
+            .login {
+                margin: auto;
+                padding: 32px;
+                text-align: center;
+            }
+            .login a {
+                color: var(--green);
+            }
+            [hidden] {
+                display: none !important;
+            }
+            @media (max-width: 600px) {
+                .header-inner {
+                    padding: 10px 14px;
+                    min-height: 64px;
+                }
+                .brand-subtitle,
+                .status {
+                    display: none;
+                }
+                .brand-name {
+                    font-size: 17px;
+                }
+                .header-actions .new-label {
+                    display: none;
+                }
+                .header-actions .new-button {
+                    width: 38px;
+                    height: 38px;
+                    padding: 0;
+                    font-size: 20px;
+                }
+                .conversation-top {
+                    padding: 18px 16px 10px;
+                }
+                .messages {
+                    padding: 20px 16px;
+                }
+                .composer {
+                    padding: 12px 16px 16px;
+                }
+                .settings-inner {
+                    padding: 24px 16px 40px;
+                }
+                .grid {
+                    grid-template-columns: 1fr;
+                    gap: 0;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app">
+            <header class="header">
+                <div class="header-inner">
+                    <div class="brand">
+                        <div class="brand-mark" aria-hidden="true">V</div>
+                        <div>
+                            <div class="brand-name">VTherm Assistant</div>
+                            <div class="brand-subtitle">Versatile Thermostat</div>
+                        </div>
+                    </div>
+                    <div class="header-actions" id="header-actions" hidden>
+                        <span class="status">Lecture seule</span
+                        ><button class="button new-button" id="new" title="Nouvelle conversation" aria-label="Nouvelle conversation">
+                            + <span class="new-label">Nouvelle conversation</span></button
+                        ><button class="button icon" id="settings-button" title="Configuration" aria-label="Configuration">&#9881;</button>
+                    </div>
+                </div>
+                <div class="feedback app-feedback" id="app-feedback" role="status"></div>
+            </header>
+            <main class="main">
+                <section class="conversation" id="conversation" hidden aria-label="Conversation">
+                    <div class="conversation-top">
+                        <div class="eyebrow">Assistant chauffage</div>
+                        <h1>Conversation</h1>
+                    </div>
+                    <div class="messages" id="messages" aria-live="polite"></div>
+                    <form class="composer" id="composer">
+                        <div class="composer-box">
+                            <textarea
+                                id="question"
+                                maxlength="4000"
+                                rows="2"
+                                aria-label="Votre question"
+                                placeholder="Posez une question sur votre installation…"
+                                required
+                            ></textarea
+                            ><button class="button primary" id="send" type="submit">Envoyer</button>
+                        </div>
+                        <div class="composer-foot">Les réponses dépendent des données accessibles à Home Assistant.</div>
+                    </form>
+                </section>
+                <section class="settings" id="settings" hidden aria-label="Configuration">
+                    <div class="settings-inner">
+                        <div class="settings-heading">
+                            <div>
+                                <div class="eyebrow">Préférences</div>
+                                <h1>Configuration</h1>
+                            </div>
+                            <button class="button" id="back">Retour à la conversation</button>
+                        </div>
+                        <form id="model-form" class="settings-section">
+                            <h2>Modèle</h2>
+                            <p>Choisissez le fournisseur et le modèle de cette conversation.</p>
+                            <div class="grid">
+                                <div class="field">
+                                    <label for="provider">Fournisseur</label
+                                    ><select id="provider">
+                                        <option value="gemini">Google Gemini</option>
+                                        <option value="openai">OpenAI</option>
+                                        <option value="anthropic">Anthropic Claude</option>
+                                        <option value="ollama">Ollama</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="model">Modèle</label><input id="model" required autocomplete="off" placeholder="Nom du modèle" />
+                                </div>
+                            </div>
+                            <div class="field" id="url-field" hidden>
+                                <label for="url">URL Ollama</label><input id="url" type="url" placeholder="http://ollama:11434" autocomplete="off" />
+                            </div>
+                            <div class="field" id="key-field">
+                                <label for="provider-key">Clé du fournisseur</label
+                                ><input id="provider-key" type="password" autocomplete="new-password" placeholder="Non modifiée" />
+                            </div>
+                            <div class="privacy" id="privacy">
+                                Le fournisseur reçoit les échanges et les données de l'installation nécessaires à la réponse. Leur conservation dépend
+                                de sa politique.
+                            </div>
+                            <div class="field-actions">
+                                <button class="button primary" type="submit">Enregistrer</button
+                                ><button class="button" id="delete-key" type="button">Supprimer la clé</button>
+                            </div>
+                            <div class="feedback" id="model-feedback" role="status"></div>
+                        </form>
+                        <form id="ha-form" class="settings-section">
+                            <h2>Home Assistant</h2>
+                            <p>Jeton d'accès administrateur pour le serveur MCP officiel.</p>
+                            <div class="field">
+                                <label for="ha-key">Jeton Home Assistant</label
+                                ><input id="ha-key" type="password" autocomplete="new-password" placeholder="Non modifié" />
+                            </div>
+                            <div class="field-actions">
+                                <button class="button primary" type="submit">Enregistrer le jeton</button
+                                ><button class="button" id="delete-ha-key" type="button">Supprimer le jeton</button>
+                            </div>
+                            <div class="feedback" id="ha-feedback" role="status"></div>
+                        </form>
+                    </div>
+                </section>
+                <section class="login" id="login" hidden>
+                    <h1>Connexion requise</h1>
+                    <p>Un compte administrateur Home Assistant est nécessaire.</p>
+                    <a href="auth/login">Se connecter</a>
+                </section>
+            </main>
+        </div>
+        <script>
+            const byId = (id) => document.getElementById(id);
+            const conversation = byId("conversation"),
+                settings = byId("settings"),
+                messages = byId("messages");
+            const question = byId("question"),
+                send = byId("send"),
+                provider = byId("provider");
+            let controller = null;
+            const request = (path, options = {}) =>
+                fetch(path, { ...options, headers: { "X-VTherm-Request": "1", ...(options.headers || {}) }, cache: "no-store" });
+            const jsonOptions = (method, value) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+            function feedback(id, text, error = false) {
+                const element = byId(id);
+                element.textContent = text;
+                element.classList.toggle("error", error);
+            }
+            function clearSecrets() {
+                byId("provider-key").value = "";
+                byId("ha-key").value = "";
+            }
+            function showConversation() {
+                clearSecrets();
+                settings.hidden = true;
+                conversation.hidden = false;
+            }
+            async function checkedRequest(path, options) {
+                const response = await request(path, options);
+                if (!response.ok) throw new Error("Échec de la requête");
+                return response;
+            }
+            async function performAction(button, feedbackId, action, failureMessage) {
+                if (button.disabled) return;
+                button.disabled = true;
+                feedback(feedbackId, "En cours…");
+                try {
+                    await action();
+                } catch {
+                    feedback(feedbackId, failureMessage, true);
+                } finally {
+                    clearSecrets();
+                    button.disabled = false;
+                }
+            }
+            function setProviderFields() {
+                const local = provider.value === "ollama";
+                byId("url-field").hidden = !local;
+                byId("key-field").hidden = local;
+                byId("privacy").hidden = local;
+                byId("delete-key").hidden = local;
+                byId("provider-key").value = "";
+            }
+            function addMessage(role, text) {
+                const empty = messages.querySelector(".empty");
+                if (empty) empty.remove();
+                const row = document.createElement("article");
+                row.className = `message ${role}`;
+                const avatar = document.createElement("div");
+                avatar.className = "avatar";
+                avatar.textContent = role === "user" ? "V" : "A";
+                avatar.setAttribute("aria-hidden", "true");
+                const content = document.createElement("div"),
+                    label = document.createElement("div"),
+                    body = document.createElement("div"),
+                    state = document.createElement("div");
+                label.className = "message-label";
+                label.textContent = role === "user" ? "Vous" : "Assistant";
+                body.className = "message-text";
+                body.textContent = text;
+                state.className = "message-state";
+                content.append(label, body, state);
+                row.append(avatar, content);
+                messages.append(row);
+                messages.scrollTop = messages.scrollHeight;
+                return { row, body, state };
+            }
+            function showEmpty() {
+                if (!messages.children.length) {
+                    const empty = document.createElement("div");
+                    empty.className = "empty";
+                    const title = document.createElement("strong");
+                    title.textContent = "Aucune conversation";
+                    empty.append(title);
+                    messages.append(empty);
+                }
+            }
+            async function loadConversation() {
+                const response = await request("api/conversation");
+                if (response.status === 403) {
+                    byId("login").hidden = false;
+                    return;
+                }
+                if (!response.ok) throw new Error("Impossible de charger la conversation.");
+                const data = await response.json();
+                messages.replaceChildren();
+                for (const message of data.messages)
+                    if (["user", "assistant"].includes(message.role) && typeof message.text === "string") addMessage(message.role, message.text);
+                showEmpty();
+                conversation.hidden = false;
+                byId("header-actions").hidden = false;
+            }
+            async function submitQuestion(text) {
+                if (controller || !text.trim()) return;
+                question.value = "";
+                addMessage("user", text);
+                const answer = addMessage("assistant", "");
+                answer.state.textContent = "Réponse en cours…";
+                controller = new AbortController();
+                send.disabled = true;
+                let complete = false,
+                    failure = "La réponse a été interrompue.";
+                try {
+                    const response = await request("api/conversation", { ...jsonOptions("POST", { question: text }), signal: controller.signal });
+                    if (!response.ok || !response.body) throw new Error("Impossible de lancer la réponse.");
+                    const reader = response.body.getReader(),
+                        decoder = new TextDecoder();
+                    let buffer = "";
+                    while (true) {
+                        const chunk = await reader.read();
+                        buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+                        const lines = buffer.split("\n");
+                        buffer = lines.pop();
+                        for (const line of lines)
+                            if (line) {
+                                const event = JSON.parse(line);
+                                if (event.type === "delta") {
+                                    answer.body.textContent += event.text;
+                                    messages.scrollTop = messages.scrollHeight;
+                                } else if (event.type === "notice") answer.state.textContent = event.message;
+                                else if (event.type === "error") failure = event.message;
+                                else if (event.type === "complete") complete = true;
+                            }
+                        if (chunk.done) break;
+                    }
+                } catch (error) {
+                    if (error.name === "AbortError") return;
+                } finally {
+                    controller = null;
+                    send.disabled = false;
+                }
+                if (complete) answer.state.textContent = "";
+                else {
+                    answer.state.classList.add("error");
+                    answer.state.textContent = `${failure} `;
+                    const retry = document.createElement("button");
+                    retry.className = "retry";
+                    retry.type = "button";
+                    retry.textContent = "Réessayer";
+                    retry.onclick = () => {
+                        answer.row.previousElementSibling?.remove();
+                        answer.row.remove();
+                        submitQuestion(text);
+                    };
+                    answer.state.append(retry);
+                }
+            }
+            byId("composer").onsubmit = (event) => {
+                event.preventDefault();
+                submitQuestion(question.value);
+            };
+            question.onkeydown = (event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+                    event.preventDefault();
+                    byId("composer").requestSubmit();
+                }
+            };
+            byId("new").onclick = () => {
+                clearSecrets();
+                performAction(
+                    byId("new"),
+                    "app-feedback",
+                    async () => {
+                        await checkedRequest("api/conversation", { method: "DELETE" });
+                        if (controller) controller.abort();
+                        messages.replaceChildren();
+                        showEmpty();
+                        showConversation();
+                        feedback("app-feedback", "");
+                    },
+                    "Conversation non supprimée ; réessayez.",
+                );
+            };
+            byId("settings-button").onclick = async () => {
+                clearSecrets();
+                conversation.hidden = true;
+                settings.hidden = false;
+                byId("model-form").inert = true;
+                let loaded = false;
+                await performAction(
+                    byId("settings-button"),
+                    "model-feedback",
+                    async () => {
+                        const response = await checkedRequest("api/model"),
+                            model = await response.json();
+                        provider.value = model?.provider || "gemini";
+                        byId("model").value = model?.model || "";
+                        byId("url").value = model?.url || "";
+                        setProviderFields();
+                        loaded = true;
+                        feedback("model-feedback", "");
+                    },
+                    "Chargement de la configuration impossible ; réessayez.",
+                );
+                byId("model-form").inert = !loaded;
+            };
+            byId("back").onclick = showConversation;
+            provider.onchange = setProviderFields;
+            byId("model-form").onsubmit = (event) => {
+                event.preventDefault();
+                const selectedProvider = provider.value,
+                    local = selectedProvider === "ollama",
+                    key = byId("provider-key").value;
+                const config = { provider: selectedProvider, model: byId("model").value.trim(), url: local ? byId("url").value.trim() : null };
+                clearSecrets();
+                performAction(
+                    event.submitter || byId("model-form").querySelector("button[type=submit]"),
+                    "model-feedback",
+                    async () => {
+                        await checkedRequest("api/model", jsonOptions("PUT", config));
+                        if (!local && key) {
+                            try {
+                                await checkedRequest(`api/secrets/${selectedProvider}`, jsonOptions("PUT", { value: key }));
+                            } catch {
+                                feedback("model-feedback", "Modèle enregistré, mais clé non enregistrée ; réessayez.", true);
+                                return;
+                            }
+                        }
+                        feedback("model-feedback", "Configuration enregistrée.");
+                    },
+                    "Configuration non enregistrée ; vérifiez les paramètres et réessayez.",
+                );
+            };
+            byId("delete-key").onclick = () => {
+                const selectedProvider = provider.value;
+                clearSecrets();
+                performAction(
+                    byId("delete-key"),
+                    "model-feedback",
+                    async () => {
+                        await checkedRequest(`api/secrets/${selectedProvider}`, { method: "DELETE" });
+                        feedback("model-feedback", "Clé supprimée.");
+                    },
+                    "Clé non supprimée ; réessayez.",
+                );
+            };
+            byId("ha-form").onsubmit = (event) => {
+                event.preventDefault();
+                const value = byId("ha-key").value;
+                clearSecrets();
+                performAction(
+                    event.submitter || byId("ha-form").querySelector("button[type=submit]"),
+                    "ha-feedback",
+                    async () => {
+                        await checkedRequest("api/secrets/home_assistant", jsonOptions("PUT", { value }));
+                        feedback("ha-feedback", "Jeton enregistré.");
+                    },
+                    "Jeton non enregistré ; réessayez.",
+                );
+            };
+            byId("delete-ha-key").onclick = () => {
+                clearSecrets();
+                performAction(
+                    byId("delete-ha-key"),
+                    "ha-feedback",
+                    async () => {
+                        await checkedRequest("api/secrets/home_assistant", { method: "DELETE" });
+                        feedback("ha-feedback", "Jeton supprimé.");
+                    },
+                    "Jeton non supprimé ; réessayez.",
+                );
+            };
+            loadConversation().catch(() => {
+                byId("login").hidden = false;
+                byId("login").querySelector("p").textContent = "Impossible de charger l'application.";
+            });
+        </script>
+    </body>
 </html>

@@ -13,7 +13,7 @@ from .ha_mcp import HomeAssistantMCP
 from .models import ModelConfig, ModelRegistry
 from .oauth import OAuthConfig
 from .oauth_flow import SESSION_COOKIE, OAuthFlow
-from .redaction import redact_data
+from .redaction import protect_logs, redact_data
 from .storage import ModelConfigStore, PrivateDatabase, SecretStore
 
 FRONTEND = Path(__file__).parent / "frontend" / "index.html"
@@ -22,11 +22,12 @@ SECRET_NAMES = frozenset({"home_assistant", "gemini", "openai", "anthropic"})
 
 
 class AccessMiddleware:
-    def __init__(self, application, *, mode: str, verify_admin, oauth: OAuthFlow | None) -> None:
+    def __init__(self, application, *, mode: str, verify_admin, oauth: OAuthFlow | None, secrets: SecretStore) -> None:
         self.app = application
         self.mode = mode
         self.verify_admin = verify_admin
         self.oauth = oauth
+        self.secrets = secrets
 
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -73,7 +74,15 @@ class AccessMiddleware:
         scope.setdefault("state", {})["user_id"] = user_id
         if self.mode == "ingress":
             scope["state"]["ingress_user_id"] = user_id
-        await self.app(scope, receive, send)
+        values = list(self.secrets.values(user_id))
+        values.append(os.environ.get("SUPERVISOR_TOKEN"))
+        if self.oauth is not None:
+            session_key = connection.cookies.get(SESSION_COOKIE)
+            session = self.oauth.sessions.get(session_key)
+            if session is not None:
+                values.extend((session_key, session.tokens.access_token, session.tokens.refresh_token))
+        async with protect_logs(values):
+            await self.app(scope, receive, send)
 
 
 def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = verify_ingress_admin, oauth_config: OAuthConfig | None = None, data_dir: Path | None = None) -> FastAPI:
@@ -122,7 +131,7 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
             oauth = OAuthFlow(oauth_config)
             application.state.oauth = oauth
             application.include_router(oauth.router)
-    application.add_middleware(AccessMiddleware, mode=mode, verify_admin=verify_admin, oauth=oauth)
+    application.add_middleware(AccessMiddleware, mode=mode, verify_admin=verify_admin, oauth=oauth, secrets=application.state.secrets)
 
     @application.get("/", include_in_schema=False)
     def index() -> FileResponse:

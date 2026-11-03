@@ -8,10 +8,16 @@ Prérequis : Python 3.14 et une connexion réseau pour installer les dépendance
 ```sh
 python3.14 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[test]'
+python -m pip install -e '.[dev]'
+python -m playwright install chromium
 python -m pytest -q
 python -m vtherm_assistant
 ```
+
+La suite comprend des tests Chromium sur ordinateur et mobile. Pour les lancer
+seuls : `python -m pytest -q tests/test_frontend.py`. Ils utilisent des services
+simulés, y compris pour les parcours reliés au backend ; aucune clé réelle ni
+installation HA n'est nécessaire.
 
 L'interface de développement est accessible à l'adresse <http://127.0.0.1:8765/>.
 Le projet est en cours de construction. Les parcours authentifiés nécessitent
@@ -80,6 +86,20 @@ conservés dans une base SQLite locale, séparément pour chaque utilisateur HA
 vérifié. Le répertoire est privé (`0700`) et la base accessible uniquement au
 compte du processus (`0600`) ; les secrets ne sont pas chiffrés dans la base.
 Protéger également l'accès à la machine, au volume et aux sauvegardes.
+
+Le contexte sauvegardé comprend les échanges ADK et les résultats des outils
+effectivement appelés, après masquage des secrets et sans les fragments partiels
+ni les parties de raisonnement interne. Ces résultats sont des observations
+passées, pas une preuve de l'état actuel ; l'assistant doit relire les données
+pour répondre sur le présent. La limitation selon la capacité du modèle reste
+à compléter ; la borne actuelle sur les messages ne borne pas les résultats
+d'outils (tâche OpenSpec 4.7).
+
+Les parcours authentifiés masquent les secrets connus dans les journaux et les
+traces d'erreur. Pendant les échanges sensibles, le contenu des journaux des
+transports HTTP, OAuth, WebSocket et MCP est remplacé par un message masqué,
+y compris pour les jetons nouvellement reçus. Le lancement documenté désactive
+les journaux d'accès HTTP afin de ne pas y conserver les codes de retour OAuth.
 
 Par défaut, le répertoire est `/data/vtherm-assistant` en mode ingress et
 `~/.local/share/vtherm-assistant` en mode autonome. `VTHERM_DATA_DIR` permet

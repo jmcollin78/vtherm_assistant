@@ -1,6 +1,7 @@
 import os
 import stat
 import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from google.adk.events import Event
 from google.adk.sessions import InMemorySessionService
 from google.adk.tools import BaseTool
 from google.genai import types
+from litellm.types.utils import Delta, ModelResponseStream, StreamingChoices
 from mcp.types import CallToolResult, TextContent, Tool
 
 from vtherm_assistant.conversations import ConversationResponse, ConversationRunner, ConversationStore, IncompleteResponse
@@ -56,6 +58,79 @@ def test_response_stream_requires_a_final_event() -> None:
         response.finish()
 
 
+@pytest.mark.parametrize("provider_name", ["gemini", "openai", "anthropic", "ollama"])
+@pytest.mark.parametrize("tool_count", [0, 1, 2])
+@pytest.mark.parametrize("outcome", ["complete", "interrupted", "error"])
+def test_conversation_runner_streaming_providers(tmp_path, provider_name, tool_count, outcome) -> None:
+    from vtherm_assistant.models import ModelConfig
+
+    config = OAuthConfig("https://assistant.example", "https://ha.example", "http://homeassistant:8123")
+    application = create_app("standalone", oauth_config=config, data_dir=tmp_path / "private")
+    if provider_name != "ollama":
+        application.state.secrets.put("alice", provider_name, "secret-key")
+    application.state.models.configure("alice", ModelConfig(
+        provider_name, "model-test", "http://ollama:11434" if provider_name == "ollama" else None
+    ))
+    tool = Tool(name="versatile_thermostat__get_status", inputSchema={"type": "object"})
+    result = CallToolResult(content=[TextContent(type="text", text="waiting")])
+
+    async def stream(parts, *, final_step=False):
+        for part in parts:
+            if provider_name == "gemini":
+                yield types.GenerateContentResponse(candidates=[types.Candidate(
+                    content=types.Content(role="model", parts=[part])
+                )])
+            else:
+                delta = Delta(content=part.text) if part.text else Delta(tool_calls=[{
+                    "index": 0, "id": "call-test", "type": "function", "function": {
+                        "name": part.function_call.name, "arguments": '{"entity_id":"climate.salon"}',
+                    },
+                }])
+                yield ModelResponseStream(model="model-test", choices=[StreamingChoices(index=0, delta=delta)])
+        if final_step and outcome == "error":
+            raise RuntimeError("Provider failed with secret-key")
+        if provider_name == "gemini":
+            if final_step and outcome == "interrupted":
+                yield types.GenerateContentResponse(candidates=[types.Candidate(finish_reason=types.FinishReason.MAX_TOKENS)])
+        else:
+            finish_reason = "length" if final_step and outcome == "interrupted" else "stop" if final_step else "tool_calls"
+            yield ModelResponseStream(model="model-test", choices=[StreamingChoices(index=0, finish_reason=finish_reason)])
+
+    streams = [stream([
+        types.Part(text=f"Lecture {index + 1} secret-"),
+        types.Part(text="key. "),
+        types.Part(function_call=types.FunctionCall(name=tool.name, args={"entity_id": "climate.salon"})),
+    ]) for index in range(tool_count)]
+    streams.append(stream([types.Part(text="Le thermostat est en attente.")], final_step=True))
+
+    async def run():
+        return [event async for event in application.state.conversation_runner.respond("alice", "État du salon ?", ["secret-key"])]
+
+    with patch.object(application.state.mcp, "list_read_only_tools", new_callable=AsyncMock, return_value=[tool]), \
+         patch.object(application.state.mcp, "call_read_only_tool", new_callable=AsyncMock, return_value=result) as call_tool, \
+         patch("google.genai.Client") as provider, \
+         patch("google.adk.models.lite_llm.LiteLLMClient.acompletion", new_callable=AsyncMock) as completion:
+        if provider_name == "gemini":
+            provider.return_value.aio.models.generate_content_stream = AsyncMock(side_effect=streams)
+        else:
+            completion.side_effect = streams
+        events = asyncio.run(run())
+
+    expected = "".join(f"Lecture {index + 1} [masqué]. " for index in range(tool_count)) + "Le thermostat est en attente."
+    assert call_tool.await_count == tool_count
+    assert "secret-key" not in str(events)
+    if provider_name != "gemini":
+        assert all(call.kwargs["stream"] is True for call in completion.call_args_list)
+    if outcome == "complete":
+        assert events[-1] == {"type": "complete"}
+        assert "".join(event.get("text", "") for event in events) == expected
+        assert application.state.conversations.load("alice")[0][-1] == {"role": "assistant", "text": expected}
+    else:
+        assert events[-1]["type"] == "error"
+        assert not any(event["type"] == "complete" for event in events)
+        assert application.state.conversations.load("alice") is None
+
+
 def test_conversation_runner_streams_and_restores_redacted_history(tmp_path) -> None:
     config = OAuthConfig("https://assistant.example", "https://ha.example", "http://homeassistant:8123")
     application = create_app("standalone", oauth_config=config, data_dir=tmp_path / "private")
@@ -100,6 +175,65 @@ def test_conversation_runner_streams_and_restores_redacted_history(tmp_path) -> 
     assert "Le bureau est en chauffe." in bob_history
     assert "Bonjour" not in bob_history
     assert "bureau" not in history
+
+
+def test_conversation_runner_restores_tool_evidence_after_restart_and_isolates_users(tmp_path) -> None:
+    from vtherm_assistant.models import ModelConfig
+
+    config = OAuthConfig("https://assistant.example", "https://ha.example", "http://homeassistant:8123")
+    directory = tmp_path / "private"
+    application = create_app("standalone", oauth_config=config, data_dir=directory)
+    for user_id in ("alice", "bob"):
+        application.state.secrets.put(user_id, "gemini", f"{user_id}-secret")
+        application.state.models.configure(user_id, ModelConfig("gemini", "gemini-test"))
+    tool = Tool(name="versatile_thermostat__get_status", inputSchema={"type": "object"})
+
+    async def stream(part):
+        yield types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(role="model", parts=[part]))])
+
+    async def read_tool(user_id, _name, _arguments):
+        return CallToolResult(content=[TextContent(type="text", text=f"tool-evidence-{user_id} {user_id}-secret")])
+
+    async def run():
+        for user_id in ("alice", "bob"):
+            events = [event async for event in application.state.conversation_runner.respond(user_id, "Diagnostic ?", [f"{user_id}-secret"])]
+            assert events[-1] == {"type": "complete"}
+        restarted = create_app("standalone", oauth_config=config, data_dir=directory)
+        for user_id in ("alice", "bob"):
+            events = [event async for event in restarted.state.conversation_runner.respond(user_id, "Pourquoi ?", [f"{user_id}-secret"])]
+            assert events[-1] == {"type": "complete"}
+        restarted.state.conversations.delete("alice")
+        events = [event async for event in restarted.state.conversation_runner.respond("alice", "Pourquoi ?", ["alice-secret"])]
+        assert events[-1] == {"type": "complete"}
+        return restarted
+
+    streams = []
+    for _user_id in ("alice", "bob"):
+        streams.extend([
+            stream(types.Part(function_call=types.FunctionCall(name=tool.name, args={"entity_id": "climate.salon"}))),
+            stream(types.Part(text="Le thermostat est inhibé.")),
+        ])
+    streams.extend(stream(types.Part(text="Vérifions la cause.")) for _index in range(3))
+    with patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.list_read_only_tools", new_callable=AsyncMock, return_value=[tool]), \
+         patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.call_read_only_tool", new_callable=AsyncMock, side_effect=read_tool), \
+         patch("google.genai.Client") as provider:
+        generate = AsyncMock(side_effect=streams)
+        provider.return_value.aio.models.generate_content_stream = generate
+        restarted = asyncio.run(run())
+    def request_history(index):
+        return json.dumps([content.model_dump(mode="json") for content in generate.call_args_list[index].kwargs["contents"]])
+
+    alice_history = request_history(4)
+    bob_history = request_history(5)
+    new_history = request_history(6)
+    assert "tool-evidence-alice" in alice_history
+    assert "tool-evidence-bob" not in alice_history
+    assert "tool-evidence-bob" in bob_history
+    assert "tool-evidence-alice" not in bob_history
+    assert "tool-evidence-" not in new_history
+    assert "alice-secret" not in alice_history
+    assert "bob-secret" not in bob_history
+    assert "tool-evidence-alice" not in str(restarted.state.conversations.load("alice"))
 
 
 @pytest.mark.parametrize("outcome", ["failure", "delete"])
@@ -193,6 +327,43 @@ def test_conversation_route_reports_provider_failure_without_exposing_credential
         assert "invalid-key" not in client.get("/api/model", headers=headers).text
         assert client.get("/api/secrets/gemini", headers=headers).status_code == 405
     assert application.state.conversations.load("alice") is None
+
+
+@pytest.mark.parametrize("failure_stage", ["mcp", "provider"])
+def test_conversation_runner_can_retry_without_saving_a_failed_exchange(tmp_path, failure_stage) -> None:
+    from vtherm_assistant.ha_mcp import MCPConnectionError
+    from vtherm_assistant.models import ModelConfig
+
+    config = OAuthConfig("https://assistant.example", "https://ha.example", "http://homeassistant:8123")
+    application = create_app("standalone", oauth_config=config, data_dir=tmp_path / "private")
+    application.state.secrets.put("alice", "gemini", "secret-key")
+    application.state.models.configure("alice", ModelConfig("gemini", "gemini-test"))
+    original = [{"role": "user", "text": "État précédent ?"}, {"role": "assistant", "text": "En attente."}]
+    application.state.conversations.save("alice", original, {})
+
+    async def stream():
+        yield types.GenerateContentResponse(candidates=[types.Candidate(
+            content=types.Content(role="model", parts=[types.Part(text="Toujours en attente.")])
+        )])
+
+    async def run():
+        failed = [event async for event in application.state.conversation_runner.respond("alice", "Question", ["secret-key"])]
+        assert application.state.conversations.load("alice")[0] == original
+        retried = [event async for event in application.state.conversation_runner.respond("alice", "Question", ["secret-key"])]
+        return failed, retried
+
+    tool_results = [MCPConnectionError("MCP secret-key"), []] if failure_stage == "mcp" else [[], []]
+    provider_results = [RuntimeError("Provider secret-key"), stream()] if failure_stage == "provider" else [stream()]
+    with patch.object(application.state.mcp, "tools_for", new_callable=AsyncMock, side_effect=tool_results), \
+         patch("google.genai.Client") as provider:
+        provider.return_value.aio.models.generate_content_stream = AsyncMock(side_effect=provider_results)
+        failed, retried = asyncio.run(run())
+    assert failed[-1]["type"] == "error"
+    assert "réessayez" in failed[-1]["message"]
+    assert "secret-key" not in str(failed)
+    assert not any(event["type"] in {"complete", "delta"} for event in failed)
+    assert retried[-1] == {"type": "complete"}
+    assert len(application.state.conversations.load("alice")[0]) == len(original) + 2
 
 
 def test_conversations_persist_and_are_isolated_by_user(tmp_path) -> None:

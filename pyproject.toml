@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["httpx>=0.27,<1", "pytest>=8,<10"]
+test = ["httpx>=0.27,<1", "pytest>=8,<10", "pytest-playwright>=0.7,<1"]
+dev = ["vtherm-assistant[test]"]
 
 [tool.setuptools.package-data]
 vtherm_assistant = ["frontend/*.html"]

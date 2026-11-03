@@ -1,5 +1,22 @@
 # Tasks
 
+## Bilan de revue du 2026-11-03
+
+La revue a confirmé 123 tests réussis dans le venv Python 3.14 et une validation OpenSpec stricte réussie. Ces résultats ne démontrent pas la compatibilité avec des installations HA, VTherm ou des fournisseurs réels : les échanges externes des tests sont simulés. Les tâches d'intégration et de validation réelle restent ouvertes, notamment 4.6, 5.3 à 5.8 et 8.4 à 8.5, à l'exception du contrat rédigé en 5.5.
+
+Constats initiaux de la revue, avant le lot correctif ci-dessous :
+
+- Streaming ADK : un préambule textuel suivi d'un appel d'outil puis d'une conclusion provoque une erreur de cohérence ; la conclusion est affichée mais l'échange n'est pas sauvegardé. Correction suivie en 6.7 et validation de l'interface en 7.1.
+- Formulaires : une erreur réseau pendant l'enregistrement du jeton HA ne produit aucun retour utilisateur. Gestion des rejets de requêtes suivie en 7.9 et validation en 7.4, 7.5 et 7.7.
+- Secrets saisis : la clé fournisseur et le jeton HA restent dans les champs masqués après retour à la conversation ; le jeton reste également présent après une erreur réseau. Correction suivie en 7.8 ; aucune fuite interutilisateur n'a été démontrée par ce constat.
+
+Vérifications manquantes lors de la revue initiale :
+
+- Les tests d'appels d'outils OpenAI, Claude et Ollama utilisent le mode non progressif, alors que le parcours conversationnel active le streaming. La couverture du parcours réellement utilisé est suivie en 4.8, sans présumer des compatibilités réelles de 4.6.
+- Aucun test navigateur reproductible n'est présent dans la suite du dépôt pour les parcours conversation et configuration ; les contrôles ponctuels de la revue ne remplacent pas cette couverture. Les tâches 7.1, 7.4, 7.5 et 7.7 sont rouvertes pour leur validation restante.
+- La persistance, l'isolation, la suppression et la restauration de messages de suivi sont déjà partiellement testées ; 7.2 reste ouverte jusqu'à validation complète de la reprise côté interface et du contexte nécessaire.
+- Le contrat d'historique de 5.5 est rédigé et distingue proposition et capacités existantes ; sa transmission effective au responsable VTherm n'est pas vérifiable dans le dépôt et reste à confirmer avant de considérer la remise comme acquise.
+
 ## 1. Fondations
 
 - [x] 1.1 Créer la structure du backend, de l'interface et des tests ; vérifier que les composants démarrent et que les tests de base s'exécutent.
@@ -20,7 +37,7 @@
 - [x] 3.1 Implémenter un stockage local protégé de la dernière conversation et de son contexte par identité vérifiée ; tester la persistance après redémarrage et l'isolation entre deux utilisateurs.
 - [x] 3.2 Implémenter la suppression de la conversation et de son contexte lors d'une nouvelle conversation ; tester l'absence de reprise et la conservation des données des autres utilisateurs.
 - [x] 3.3 Protéger les identifiants HA et les clés de fournisseurs dans le backend ; tester leur stockage, leur remplacement, leur suppression et l'absence d'accès non autorisé.
-- [ ] 3.4 Masquer les secrets dans les réponses et journaux, y compris les erreurs de fournisseurs ; tester des erreurs contenant des clés et des jetons.
+- [x] 3.4 Compléter et vérifier le masquage des secrets dans les réponses et journaux sur les parcours fournisseur, MCP et authentification ; tester les clés de fournisseurs, jetons HA, jetons OAuth et identifiants de session, y compris les erreurs et les secrets répartis entre fragments de streaming, sans considérer les seuls tests de réponses comme une preuve de protection des journaux.
 - [x] 3.5 Documenter la persistance locale, la suppression des données et la conservation éventuelle par les fournisseurs ; vérifier que les procédures décrites n'affectent ni Recorder ni VTherm.
 
 ## 4. Fournisseurs et modèles
@@ -32,6 +49,7 @@
 - [x] 4.5 Intégrer Ollama avec son URL et un modèle local sans clé distante obligatoire ; tester la configuration, les appels d'outils et l'indisponibilité du serveur.
 - [ ] 4.6 Vérifier pour chaque gamme des quatre fournisseurs la dernière génération et la précédente lorsqu'elles existent ; documenter les modèles compatibles testés, les incompatibilités connues et les modèles non vérifiés, avec versions et capacités d'outils, de français et d'affichage progressif.
 - [ ] 4.7 Limiter le contexte et l'historique transmis selon la capacité du modèle et signaler les données tronquées ; tester les limites, la préservation des éléments nécessaires et l'absence d'envoi superflu.
+- [x] 4.8 Vérifier pour Gemini, OpenAI, Claude et Ollama le parcours conversationnel en streaming utilisé par l'app avec les adaptateurs installés ; ajouter des tests simulés reproductibles couvrant réponse simple, préambule puis appel d'outil et conclusion, appels d'outils successifs, interruption et erreur ; vérifier l'absence de duplication, l'événement de fin et la sauvegarde uniquement en cas de réponse complète. Distinguer ces tests de la matrice de compatibilité réelle de 4.6.
 
 ## 5. MCP officiel et lecture seule
 
@@ -51,17 +69,20 @@
 - [ ] 6.3 Faire distinguer faits observés, hypothèses et informations manquantes ; tester notamment le thermostat en attente, l'inhibition sans règle accessible et la puissance isolée à 50 %.
 - [ ] 6.4 Fournir des conseils étayés et des liens documentaires pertinents sans modifier l'installation ; tester les recommandations de réglage et de plugin ainsi que les limites de compatibilité.
 - [ ] 6.5 Encadrer la consultation documentaire et traiter les sorties externes comme des données non fiables ; tester les instructions malveillantes et le signalement lorsque le contenu d'une page n'est pas consultable.
-- [ ] 6.6 Gérer les erreurs MCP et fournisseur et les réponses incomplètes ; tester les messages exploitables, la possibilité de réessayer et l'absence de conclusion fabriquée.
+- [x] 6.6 Gérer les erreurs MCP et fournisseur et les réponses incomplètes ; tester les messages exploitables sans secret, la possibilité de réessayer, l'absence de conclusion fabriquée et de sauvegarde d'un échange incomplet ; distinguer un véritable échec externe d'une réponse valide contenant des étapes d'outils, corrigée en 6.7.
+- [x] 6.7 Corriger l'accumulation du texte progressif entre les étapes ADK pour accepter un préambule suivi d'un ou plusieurs appels d'outils puis d'une conclusion ; ajouter un test de non-régression reproduisant l'échec constaté et vérifier que le texte n'est pas dupliqué, que l'échange complet est sauvegardé et qu'un événement de fin remplace l'erreur injustifiée. Préserver la détection des réponses réellement interrompues ou incohérentes et le masquage entre fragments.
 
 ## 7. Conversation et configuration
 
-- [x] 7.1 Créer la page de conversation avec saisie, réponses et état en cours ; tester une question, une réponse interrompue, un échec et sa relance.
-- [ ] 7.2 Restaurer la dernière conversation et son contexte après navigation ou redémarrage ; tester une question de suivi et la reprise de chaque utilisateur autorisé.
+- [x] 7.1 Finaliser la validation de la page de conversation existante avec saisie, réponses et état en cours ; tester dans le navigateur une question, une réponse avec préambule et appel d'outil après correction de 6.7, une réponse interrompue, un échec et sa relance, sans présenter une réponse incomplète comme terminée.
+- [x] 7.2 Compléter la validation de la restauration de la dernière conversation et de son contexte déjà partiellement implémentée ; tester dans le navigateur le retour après navigation et rechargement, puis la reprise après redémarrage du backend et réauthentification si nécessaire ; vérifier une question de suivi pour chaque utilisateur autorisé, l'isolation et l'absence de reprise après nouvelle conversation. Vérifier quels faits et résultats d'outils nécessaires au suivi sont effectivement conservés, au-delà du seul réaffichage des messages.
 - [x] 7.3 Ajouter l'action de nouvelle conversation reliée à la suppression locale ; tester que les messages et le contexte précédents ne sont plus repris.
-- [x] 7.4 Créer une page distincte de configuration du fournisseur, du modèle, de l'URL et de la clé si nécessaire ; tester les quatre fournisseurs et le retour à la conversation sans perte des messages.
-- [x] 7.5 Masquer les clés enregistrées et présenter les erreurs de configuration sans secret ; tester l'affichage, une clé invalide et un fournisseur inaccessible.
+- [x] 7.4 Finaliser la validation de la page distincte de configuration existante pour le fournisseur, le modèle, l'URL et la clé si nécessaire ; tester les quatre fournisseurs, le retour à la conversation sans perte des messages et les échecs de chargement ou d'enregistrement après correction de 7.9.
+- [x] 7.5 Compléter le masquage des clés et la présentation des erreurs de configuration sans secret ; tester l'affichage, une clé invalide, un fournisseur inaccessible et une panne réseau, ainsi que l'effacement des champs sensibles prévu en 7.8.
 - [x] 7.6 Informer des données envoyées aux fournisseurs distants et de leur politique de conservation ; vérifier l'information lors de la configuration et son absence d'affirmation sur la suppression distante.
-- [x] 7.7 Vérifier l'interface de conversation et de configuration sur ordinateur et mobile ; tester la lisibilité, la navigation et les états de chargement et d'erreur.
+- [x] 7.7 Ajouter au dépôt des tests navigateur reproductibles sur ordinateur et mobile pour la conversation et la configuration ; vérifier la lisibilité, l'absence de débordement, la navigation, les états de chargement et d'erreur, l'interruption et la relance d'une réponse, la nouvelle conversation, la reprise après rechargement et la non-conservation des secrets saisis. Utiliser des services simulés sans secrets réels pour cette couverture et conserver les validations HA réelles en 8.4 et 8.5.
+- [x] 7.8 Effacer les champs de clé fournisseur et de jeton HA lors de la sortie de configuration, y compris via une nouvelle conversation, et après chaque tentative d'enregistrement, réussie ou non ; tester aussi les rejets réseau et vérifier qu'aucun secret saisi n'est conservé dans les champs masqués ou recopié dans les messages d'erreur.
+- [x] 7.9 Gérer explicitement les erreurs réseau des actions de configuration et de suppression, ainsi que le chargement de la configuration et la nouvelle conversation ; afficher un message exploitable sans secret, permettre une nouvelle tentative et ne pas annoncer un succès ni effacer la conversation affichée si la suppression serveur échoue ; tester les réponses HTTP d'échec et les rejets de requêtes avec les contrôles utilisables après l'erreur.
 
 ## 8. Déploiement et vérification intégrée
 
@@ -70,3 +91,24 @@
 - [ ] 8.3 Documenter l'installation, la configuration, les prérequis de versions et la désinstallation pour les deux parcours ; vérifier les procédures et la suppression possible des secrets et conversations sans modifier VTherm.
 - [ ] 8.4 Vérifier de bout en bout, sur les versions HA et VTherm prises en charge, la connexion administrateur, l'isolation de deux utilisateurs, la reprise après redémarrage et le refus des utilisateurs non autorisés.
 - [ ] 8.5 Vérifier de bout en bout les diagnostics courants et historiques, la lecture seule et les erreurs de données ou de fournisseur avec les outils MCP effectivement disponibles ; consigner les versions et les limites observées.
+
+## Prochain lot prioritaire : fiabilisation de la conversation et des erreurs
+
+Ordre recommandé, sans démarrer le développement dans cette révision :
+
+1. Corriger le streaming multi-étapes en 6.7, puis étendre la couverture des quatre adaptateurs en 4.8.
+2. Compléter la protection des sorties et journaux en 3.4 et le traitement des échecs et réponses incomplètes en 6.6.
+3. Corriger la gestion des erreurs réseau et la conservation des champs sensibles en 7.8 et 7.9, puis revalider 7.4 et 7.5.
+4. Ajouter les tests navigateur de 7.7, revalider 7.1 et terminer les vérifications de reprise de 7.2.
+
+Ce lot ne clôt ni la compatibilité réelle des modèles de 4.6, ni les vérifications MCP et historique de la section 5, ni les essais intégrés de la section 8. L'historique reste dépendant de l'outil livré séparément et de la vérification de son contrat effectif.
+
+## Validation du lot correctif du 2026-11-03
+
+- Tâches clôturées après vérification : 3.4, 4.8, 6.6, 6.7, 7.1, 7.2, 7.4, 7.5, 7.7, 7.8 et 7.9 ; avancement : 34 sur 51.
+- Suite complète : 216 tests réussis, dont 52 tests Chromium sur ordinateur et mobile ; 4 avertissements issus des dépendances restent présents.
+- Streaming : 36 scénarios sur les adaptateurs installés des quatre fournisseurs, avec réponses simples, préambules, outils successifs, troncatures et erreurs ; appels aux SDK simulés, sans validation de compatibilité réelle des modèles.
+- Confidentialité : tests des réponses et journaux, des secrets fragmentés, des transports sensibles et des identifiants OAuth, HA et fournisseur ; champs sensibles vidés lors de la navigation et des tentatives d'enregistrement.
+- Reprise : preuves MCP masquées sauvegardées avec les événements utiles à la conversation, sans fragments partiels ni parties de raisonnement interne ; tests navigateur reliés au backend recréé sur le même stockage, isolation de deux utilisateurs et effacement par nouvelle conversation. L'identification HA et les fournisseurs restent simulés dans ces essais.
+- Limite toujours ouverte en 4.7 : la borne actuelle sur les messages ne borne pas les résultats d'outils ; la limitation du contexte selon le modèle reste à implémenter.
+- La validation de 4.6 nécessite les modèles et environnements réels à tester ; les tâches MCP, historique et déploiement non cochées ne sont pas validées par ce lot.

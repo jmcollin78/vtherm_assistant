@@ -45,11 +45,11 @@ def test_adk_and_app_start_without_provider_credentials() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_ingress_accepts_only_supervisor_with_an_unambiguous_identity() -> None:
+def test_ingress_accepts_only_supervisor_with_an_unambiguous_identity(tmp_path) -> None:
     async def verify_admin(user_id: str) -> bool:
         return user_id == "user-123"
 
-    ingress_app = create_app("ingress", verify_admin=verify_admin)
+    ingress_app = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
 
     @ingress_app.get("/identity")
     def identity(request: Request) -> dict[str, str]:
