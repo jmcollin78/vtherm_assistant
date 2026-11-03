@@ -1,0 +1,81 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "VTherm: demarrer en local (HTTPS)",
+            "dependsOn": ["VTherm: proxy HTTPS local", "VTherm: application locale"],
+            "dependsOrder": "parallel",
+            "problemMatcher": [],
+            "runOptions": { "instanceLimit": 1 }
+        },
+        {
+            "label": "VTherm: proxy HTTPS local",
+            "type": "process",
+            "command": "rtk",
+            "args": ["proxy", "caddy", "run", "--config", "${workspaceFolder}/.vscode/Caddyfile", "--adapter", "caddyfile"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "vtherm-proxy",
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+): (error|warning): (.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": ".*serving initial configuration.*"
+                }
+            },
+            "presentation": { "reveal": "always", "panel": "dedicated" },
+            "runOptions": { "instanceLimit": 1 }
+        },
+        {
+            "label": "VTherm: application locale",
+            "type": "process",
+            "command": "rtk",
+            "args": ["proxy", "arch", "-arm64", "${workspaceFolder}/.venv/bin/python", "-m", "vtherm_assistant"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "VTHERM_DEPLOYMENT_MODE": "standalone",
+                    "VTHERM_APP_URL": "https://localhost:8443",
+                    "VTHERM_HA_BROWSER_URL": "https://localhost:8444",
+                    "VTHERM_HA_INTERNAL_URL": "http://127.0.0.1:8123",
+                    "VTHERM_DATA_DIR": "${userHome}/.local/share/vtherm-assistant-realtest"
+                }
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "vtherm-app",
+                "pattern": {
+                    "regexp": "^(.+):(\\d+):(\\d+): (error|warning): (.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": ".*Uvicorn running on.*"
+                }
+            },
+            "presentation": { "reveal": "always", "panel": "dedicated" },
+            "runOptions": { "instanceLimit": 1 }
+        },
+        {
+            "label": "VTherm: approuver le certificat local",
+            "type": "process",
+            "command": "rtk",
+            "args": ["proxy", "caddy", "trust", "--address", "127.0.0.1:2020"],
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" }
+        }
+    ]
+}

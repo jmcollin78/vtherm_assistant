@@ -29,6 +29,87 @@ dépendances. Si le terminal fonctionne sous Rosetta (`uname -m` affiche
 `x86_64`) mais que les dépendances sont en `arm64`, ouvrir un shell natif avec
 `arch -arm64 /bin/bash` avant d'exécuter les commandes ci-dessus.
 
+## Test local avec Home Assistant
+
+Ce parcours utilise les vrais services HA, MCP et fournisseur de modèle,
+contrairement aux tests automatisés qui les simulent. Aucune exposition à
+Internet n'est nécessaire ; un fournisseur distant nécessite néanmoins une
+connexion sortante et peut recevoir les données utilisées pour répondre.
+
+### Préparer l'instance de test
+
+1. Démarrer Home Assistant sur `http://127.0.0.1:8123` et créer un compte
+	administrateur de test.
+2. Installer VTherm et configurer au moins un thermostat avec des capteurs et
+	un actionneur simulés, sans équipement de chauffage réel.
+3. Ajouter l'intégration **Model Context Protocol Server** depuis
+	**Paramètres > Appareils et services**. Dans ses options, rendre accessibles
+	les API LLM Home Assistant et VTherm, et exposer les entités de test à Assist.
+4. Depuis le profil de l'administrateur, créer un jeton longue durée pour les
+	appels MCP. Ce jeton est distinct de la session OAuth de l'interface.
+5. Préparer un modèle et sa clé fournisseur, ou un serveur Ollama compatible
+	avec les appels d'outils. Noter les versions de HA, VTherm et le modèle testé.
+
+### Lancement local depuis VS Code
+
+Prérequis : le venv ci-dessus, Caddy (`rtk proxy brew install caddy` sur macOS)
+et Home Assistant de test accessible sur `http://127.0.0.1:8123`.
+
+Dans `Cmd+P`, saisir `task VTherm: demarrer en local (HTTPS)` puis Entrée.
+Cette tâche lance le proxy Caddy et l'application avec les paramètres OAuth
+locaux, dans deux terminaux dédiés :
+
+- Assistant : `https://localhost:8443`, vers le backend `127.0.0.1:8765`.
+- Home Assistant : `https://localhost:8444`, vers `127.0.0.1:8123`.
+- Stockage de test séparé : `~/.local/share/vtherm-assistant-realtest`.
+
+Au premier lancement, exécuter également depuis `Cmd+P` la tâche
+`task VTherm: approuver le certificat local`. Elle nécessite que le proxy
+soit démarré ; macOS peut demander une autorisation ou un mot de passe à saisir
+directement dans le terminal. Cette action ajoute l'autorité locale de Caddy
+au magasin de confiance ; elle n'est jamais exécutée automatiquement.
+Ouvrir ensuite `https://localhost:8443`.
+
+Home Assistant doit accepter le proxy dans ses réglages réseau
+(`Trust X-Forwarded-For` et `Trusted proxies`, avec l'adresse du proxy telle
+que HA la voit). Configurer également son URL navigateur avec
+`https://localhost:8444`. Ne pas exposer les ports de test à Internet.
+L'intégration MCP, VTherm et les identifiants restent à configurer dans HA
+et dans l'assistant ; les tâches ne contiennent aucun secret.
+
+Pour arrêter les deux processus, utiliser `Tasks: Terminate Task` depuis
+la palette de commandes et arrêter les deux tâches enfants. Le lancement
+applicatif utilise le Python ARM64 du venv sur macOS Apple Silicon.
+
+### Vérifier le fonctionnement
+
+1. Ouvrir `https://localhost:8443`, sélectionner **Se connecter** et autoriser
+	l'application avec le compte administrateur HA de test.
+2. Dans les paramètres de l'assistant, enregistrer le fournisseur, le modèle,
+	sa clé éventuelle et le jeton HA. Saisir les secrets uniquement dans les
+	champs prévus, jamais dans la conversation ou dans les fichiers du dépôt.
+3. Demander « Quels thermostats sont disponibles ? », puis l'état et un
+	diagnostic d'un thermostat précis. Comparer les résultats aux entités HA.
+4. Modifier une donnée simulée dans HA et redemander l'état actuel : la réponse
+	doit refléter la nouvelle valeur, pas seulement la conversation passée.
+5. Arrêter et relancer l'application, se reconnecter et vérifier la reprise
+	de la conversation. **Nouvelle conversation** doit effacer les messages
+	et le contexte, sans supprimer les identifiants enregistrés.
+6. Vérifier également le refus d'un compte non administrateur et le message
+	d'erreur lorsque HA est indisponible, puis la possibilité de réessayer.
+
+Un avertissement de certificat nécessite d'approuver l'autorité locale, sans
+désactiver les vérifications HTTPS. Une erreur `502` sur le proxy HA indique
+de vérifier le service sur le port 8123 ; un refus de proxy côté HA nécessite
+de vérifier ses réglages de confiance. Des outils VTherm absents nécessitent
+de vérifier les versions installées, les API MCP sélectionnées et l'exposition
+des entités.
+
+Ce parcours ne garantit pas encore la compatibilité des versions testées :
+consigner les résultats et les éventuels écarts. L'historique détaillé dépend
+d'un outil encore à réaliser ; la limitation du contexte reste à compléter.
+Commencer avec des conversations courtes et l'installation de test isolée.
+
 ## Identification
 
 L'accès aux données et aux requêtes est réservé aux administrateurs Home
