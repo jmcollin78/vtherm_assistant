@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -10,8 +11,11 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, Tool
 
 from .oauth import _validate_base_url, current_admin_for_url
-from .redaction import protect_logs, redact_data
+from .redaction import log_failure, protect_logs, redact_data
 from .storage import SecretStore
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 READ_ONLY_TOOL_DEFINITIONS = {
@@ -78,24 +82,40 @@ class HomeAssistantMCP:
     async def _session(self, user_id: str) -> AsyncIterator[ClientSession]:
         token = self.secrets.get(user_id, "home_assistant")
         if not token:
+            _LOGGER.error("operation=mcp.session stage=authentication category=missing_token")
             raise MCPConnectionError("Jeton Home Assistant manquant")
+        stage = "authentication"
+
+        async def record_response(response: httpx.Response) -> None:
+            if response.is_error:
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as error:
+                    log_failure(_LOGGER, "mcp.http", error, stage=stage)
+
         try:
             if await current_admin_for_url(self.base_url, token) is None:
+                _LOGGER.error("operation=mcp.session stage=authentication category=permission")
                 raise MCPConnectionError("Jeton Home Assistant non autorisé")
+            stage = "initialize"
             async with protect_logs(self.secrets.values(user_id)), httpx.AsyncClient(
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=httpx.Timeout(10, read=30),
                 follow_redirects=False,
                 trust_env=False,
                 transport=self.transport,
+                event_hooks={"response": [record_response]},
             ) as client:
                 async with streamable_http_client(self.url, http_client=client) as (read, write, _):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
+                        stage = "operation"
                         yield session
-        except MCPToolDenied:
+        except MCPToolDenied as error:
+            log_failure(_LOGGER, "mcp.session", error, stage=stage)
             raise
         except ExceptionGroup as error:
+            log_failure(_LOGGER, "mcp.session", error, stage=stage)
             denied, other = error.split(MCPToolDenied)
             if denied is not None and other is None:
                 exception = denied.exceptions[0]
@@ -103,7 +123,8 @@ class HomeAssistantMCP:
                     exception = exception.exceptions[0]
                 raise exception from None
             raise MCPConnectionError("Connexion au serveur MCP Home Assistant impossible") from None
-        except Exception:
+        except Exception as error:
+            log_failure(_LOGGER, "mcp.session", error, stage=stage)
             raise MCPConnectionError("Connexion au serveur MCP Home Assistant impossible") from None
 
     async def check_connection(self, user_id: str) -> None:
@@ -113,9 +134,11 @@ class HomeAssistantMCP:
     async def _read_only_tools(self, session: ClientSession) -> list[Tool]:
         tools: dict[str, Tool] = {}
         cursor = None
+        discovered = 0
         seen_cursors: set[str] = set()
         while True:
             page = await session.list_tools(cursor=cursor)
+            discovered += len(page.tools)
             for tool in page.tools:
                 if tool.name in READ_ONLY_TOOLS:
                     if tool.name in tools:
@@ -123,6 +146,8 @@ class HomeAssistantMCP:
                     tools[tool.name] = tool
             cursor = page.nextCursor
             if cursor is None:
+                if not tools:
+                    _LOGGER.warning("operation=mcp.discover category=no_allowed_tools discovered=%s allowed=0", discovered)
                 return list(tools.values())
             if cursor in seen_cursors or len(seen_cursors) >= 100:
                 raise MCPToolDenied("Pagination MCP invalide")
@@ -142,4 +167,7 @@ class HomeAssistantMCP:
             tools = await self._read_only_tools(session)
             if not any(tool.name == name for tool in tools):
                 raise MCPToolDenied("Outil MCP indisponible")
-            return await session.call_tool(name, arguments)
+            result = await session.call_tool(name, arguments)
+            if result.isError:
+                _LOGGER.warning("operation=mcp.call category=tool_error tool=%s", name)
+            return result

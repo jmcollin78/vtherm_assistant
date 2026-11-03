@@ -1,4 +1,5 @@
 import json
+import logging
 import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import closing
@@ -13,8 +14,11 @@ from google.genai import types
 
 from .ha_mcp import HomeAssistantMCP
 from .models import ModelRegistry
-from .redaction import StreamingRedactor, redact_data
+from .redaction import StreamingRedactor, log_failure, redact_data
 from .storage import PrivateDatabase
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class IncompleteResponse(Exception):
@@ -159,6 +163,7 @@ class ConversationRunner:
             yield {"type": "error", "message": "Une réponse est déjà en cours."}
             return
         self.running.add(user_id)
+        stage = "load_conversation"
         try:
             conversation, version = self.store.snapshot(user_id)
             messages, context = conversation if conversation else ([], {})
@@ -177,7 +182,9 @@ class ConversationRunner:
                 selected.pop(0)
             if len(selected) != len(safe_messages):
                 yield {"type": "notice", "message": "Une partie de la conversation précédente n'a pas été transmise au modèle."}
+            stage = "prepare_agent"
             agent = await self.agents.for_user(user_id, tuple(secrets))
+            stage = "restore_context"
             sessions = InMemorySessionService()
             session = await sessions.create_session(app_name="vtherm", user_id=user_id)
             stored_events = [Event.model_validate(item) for item in redact_data(context.get("events", []), secrets)]
@@ -196,6 +203,7 @@ class ConversationRunner:
             runner = Runner(app_name="vtherm", agent=agent, session_service=sessions)
             response = ConversationResponse(agent.name, secrets)
             answer = ""
+            stage = "stream"
             async for event in runner.run_async(
                 user_id=user_id, session_id=session.id,
                 new_message=types.Content(role="user", parts=[types.Part(text=safe_question)]),
@@ -205,7 +213,9 @@ class ConversationRunner:
                 if fragment:
                     answer += fragment
                     yield {"type": "delta", "text": fragment}
+            stage = "finalize"
             response.finish()
+            stage = "save_conversation"
             updated = safe_messages + [{"role": "user", "text": safe_question}, {"role": "assistant", "text": answer}]
             saved_session = await sessions.get_session(app_name="vtherm", user_id=user_id, session_id=session.id)
             saved_events = []
@@ -221,7 +231,8 @@ class ConversationRunner:
                 yield {"type": "error", "message": "La conversation a changé ; réessayez."}
                 return
             yield {"type": "complete"}
-        except Exception:
+        except Exception as error:
+            log_failure(_LOGGER, "conversation.respond", error, stage=stage)
             yield {"type": "error", "message": "Impossible de terminer la réponse ; vérifiez la configuration et réessayez."}
         finally:
             self.running.remove(user_id)

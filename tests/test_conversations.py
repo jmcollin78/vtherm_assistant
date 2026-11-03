@@ -330,7 +330,7 @@ def test_conversation_route_reports_provider_failure_without_exposing_credential
 
 
 @pytest.mark.parametrize("failure_stage", ["mcp", "provider"])
-def test_conversation_runner_can_retry_without_saving_a_failed_exchange(tmp_path, failure_stage) -> None:
+def test_conversation_runner_can_retry_without_saving_a_failed_exchange(tmp_path, failure_stage, caplog) -> None:
     from vtherm_assistant.ha_mcp import MCPConnectionError
     from vtherm_assistant.models import ModelConfig
 
@@ -364,6 +364,9 @@ def test_conversation_runner_can_retry_without_saving_a_failed_exchange(tmp_path
     assert not any(event["type"] in {"complete", "delta"} for event in failed)
     assert retried[-1] == {"type": "complete"}
     assert len(application.state.conversations.load("alice")[0]) == len(original) + 2
+    expected_stage = "prepare_agent" if failure_stage == "mcp" else "stream"
+    assert f"operation=conversation.respond stage={expected_stage}" in caplog.text
+    assert "secret-key" not in caplog.text
 
 
 def test_conversations_persist_and_are_isolated_by_user(tmp_path) -> None:

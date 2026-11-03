@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -8,8 +9,11 @@ from google.adk.models import Gemini, LlmRequest, LlmResponse
 from google.adk.models.base_llm import BaseLlmConnection
 from google.adk.models.lite_llm import LiteLlm
 
-from .redaction import protect_logs
+from .redaction import log_failure, protect_logs
 from .storage import ModelConfigStore, SecretStore
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def _protected_responses(responses: AsyncIterator[LlmResponse], secret: str | None) -> AsyncIterator[LlmResponse]:
@@ -19,7 +23,8 @@ async def _protected_responses(responses: AsyncIterator[LlmResponse], secret: st
                 response = await anext(responses)
         except StopAsyncIteration:
             return
-        except Exception:
+        except Exception as error:
+            log_failure(_LOGGER, "provider.generate", error)
             raise RuntimeError("La requête au fournisseur a échoué") from None
         yield response
 

@@ -51,14 +51,15 @@ def test_mcp_authenticates_with_each_users_token_and_reconnects(tmp_path, caplog
     assert "bob-token" not in caplog.text
 
 
-def test_mcp_fails_closed_without_a_token_or_when_authentication_fails(tmp_path, caplog) -> None:
+@pytest.mark.parametrize("status", [401, 404, 503])
+def test_mcp_fails_closed_without_a_token_or_when_authentication_fails(tmp_path, caplog, status) -> None:
     secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
     secrets.put("alice", "home_assistant", "alice-token")
     requests = []
 
     async def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(401, text="invalid alice-token")
+        return httpx.Response(status, text="invalid alice-token private-content")
 
     client = HomeAssistantMCP("http://homeassistant:8123", secrets, transport=httpx.MockTransport(handle))
     with pytest.raises(MCPConnectionError, match="Jeton Home Assistant manquant"):
@@ -69,9 +70,13 @@ def test_mcp_fails_closed_without_a_token_or_when_authentication_fails(tmp_path,
             asyncio.run(client.check_connection("alice"))
     assert "alice-token" not in str(error.value)
     assert "alice-token" not in caplog.text
+    assert "private-content" not in caplog.text
+    assert "category=missing_token" in caplog.text
+    assert "operation=mcp.session stage=initialize" in caplog.text
+    assert f"http_status={status}" in caplog.text
 
 
-def test_mcp_rejects_non_admin_token_even_if_server_allows_it(tmp_path) -> None:
+def test_mcp_rejects_non_admin_token_even_if_server_allows_it(tmp_path, caplog) -> None:
     secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
     secrets.put("alice", "home_assistant", "alice-token")
     transport = httpx.MockTransport(lambda request: pytest.fail("MCP doit refuser ce jeton avant la connexion"))
@@ -79,6 +84,8 @@ def test_mcp_rejects_non_admin_token_even_if_server_allows_it(tmp_path) -> None:
     with patch("vtherm_assistant.ha_mcp.current_admin_for_url", new_callable=AsyncMock, return_value=None):
         with pytest.raises(MCPConnectionError):
             asyncio.run(client.check_connection("alice"))
+    assert "stage=authentication category=permission" in caplog.text
+    assert "alice-token" not in caplog.text
 
 
 def test_mcp_reconnects_after_server_error(tmp_path) -> None:
@@ -165,7 +172,7 @@ def test_mcp_filters_tools_and_rechecks_before_call(tmp_path) -> None:
     assert calls.count("tools/call") == 1
 
 
-def test_mcp_refuses_allowed_tool_when_not_discovered(tmp_path) -> None:
+def test_mcp_refuses_allowed_tool_when_not_discovered(tmp_path, caplog) -> None:
     secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
     secrets.put("alice", "home_assistant", "alice-token")
     calls = []
@@ -187,10 +194,11 @@ def test_mcp_refuses_allowed_tool_when_not_discovered(tmp_path) -> None:
         with pytest.raises(MCPToolDenied, match="indisponible"):
             asyncio.run(client.call_read_only_tool("alice", "versatile_thermostat__get_status", {}))
     assert "tools/call" not in calls
+    assert "category=no_allowed_tools discovered=0 allowed=0" in caplog.text
 
 
 @pytest.mark.parametrize("message", ["Entity not exposed", "Permission denied"])
-def test_mcp_preserves_read_access_errors_without_command_calls(tmp_path, message) -> None:
+def test_mcp_preserves_read_access_errors_without_command_calls(tmp_path, message, caplog) -> None:
     secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
     secrets.put("alice", "home_assistant", "alice-token")
     calls = []
@@ -216,6 +224,8 @@ def test_mcp_preserves_read_access_errors_without_command_calls(tmp_path, messag
     assert result.isError is True
     assert result.content[0].text == message
     assert calls == ["versatile_thermostat__get_status"]
+    assert "operation=mcp.call category=tool_error tool=versatile_thermostat__get_status" in caplog.text
+    assert message not in caplog.text
 
 
 @pytest.mark.parametrize("pages", [

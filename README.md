@@ -105,6 +105,30 @@ de vérifier ses réglages de confiance. Des outils VTherm absents nécessitent
 de vérifier les versions installées, les API MCP sélectionnées et l'exposition
 des entités.
 
+### Erreur 400 avec Home Assistant dans Docker
+
+Si HA répond directement sur `http://127.0.0.1:8123`, mais renvoie
+`400: Bad Request` via `https://localhost:8444`, y compris sur `/auth/authorize`,
+vérifier les journaux HA. Sur l'installation de test, ils indiquaient :
+
+```text
+Received X-Forwarded-For header from an untrusted proxy 172.17.0.1
+```
+
+HA dans Docker voit ici Caddy comme `172.17.0.1`, et non `127.0.0.1`.
+Cette adresse dépend du réseau Docker : utiliser celle indiquée dans les
+journaux de sa propre installation, sans autoriser tout le sous-réseau.
+
+1. Ouvrir **Paramètres > Système > Réseau > Serveur HTTP > Proxy inverse**.
+2. Activer la confiance dans `X-Forwarded-For` et ajouter l'adresse observée
+	aux **proxys de confiance** (`172.17.0.1` dans cet exemple).
+3. Enregistrer : HA redémarre. Confirmer les nouveaux paramètres si demandé.
+4. Vérifier que `https://localhost:8444` affiche HA, puis relancer
+	**Se connecter** depuis l'assistant sur `https://localhost:8443`.
+
+Ce refus intervient au niveau du proxy, avant OAuth. Il ne nécessite pas
+d'ajouter l'URL de l'assistant aux origines CORS autorisées.
+
 Ce parcours ne garantit pas encore la compatibilité des versions testées :
 consigner les résultats et les éventuels écarts. L'historique détaillé dépend
 d'un outil encore à réaliser ; la limitation du contexte reste à compléter.
@@ -159,6 +183,56 @@ Un accès refusé renvoie `403` et le message « Accès refusé ». Les parcours
 actuellement couverts par des tests simulés, pas encore validés sur une
 installation Home Assistant réelle. L'interface de connexion reste à vérifier
 sur cette installation ; le paquet de déploiement autonome reste à réaliser.
+
+## Diagnostics
+
+Les erreurs de l'application sont écrites dans le terminal
+**VTherm: application locale**, au niveau `ERROR` ; les alertes MCP sont au
+niveau `WARNING`. Après une modification du code, arrêter puis relancer cette
+tâche pour charger les nouveaux diagnostics. Les journaux du proxy se trouvent
+dans le terminal **VTherm: proxy HTTPS local**.
+
+Le message de l'interface reste générique pour protéger les données. Le journal
+conserve les métadonnées nécessaires au diagnostic, par exemple :
+
+```text
+operation=provider.generate stage=request error_type=AuthenticationError http_status=401 code=invalid_api_key category=authentication
+operation=conversation.respond stage=stream error_type=AuthenticationError http_status=401 code=invalid_api_key category=authentication
+```
+
+La première ligne situe la cause ; la seconde indique où elle a interrompu la
+conversation. Les étapes sont `load_conversation`, `prepare_agent` (modèle et
+découverte MCP), `restore_context`, `stream`, `finalize` et `save_conversation`.
+Le type d'exception dépend du SDK. Le statut ou le code vaut `unknown` lorsque
+la bibliothèque ne fournit pas cette métadonnée reconnue.
+
+Principaux cas à vérifier :
+
+- `authentication`, HTTP `401`, `invalid_api_key` : clé du fournisseur refusée.
+- `model_access`, `model_not_found` : identifiant du modèle ou droit d'accès.
+- `quota`, `insufficient_quota` : crédits ou quota du compte fournisseur.
+- `rate_limit`, HTTP `429` : limite de requêtes ; un `429` peut aussi signaler
+	un quota insuffisant lorsque le code fournisseur le précise.
+- `parameters` : paramètre de génération non accepté ; `context_limit` :
+	contexte trop long.
+- `operation=mcp.session`, `stage=authentication`, `missing_token` ou
+	`permission` : jeton HA absent ou droits administrateur non vérifiés.
+- `operation=mcp.http`, `stage=initialize`, HTTP `404` : vérifier que
+	l'intégration MCP est installée sur l'instance ciblée ; `401` ou `403` :
+	vérifier l'authentification et les droits. Le statut est enregistré avant
+	sa transformation par le SDK ; une ligne `mcp.session` peut ensuite signaler
+	une erreur de protocole avec un statut `unknown`.
+- `no_allowed_tools` : MCP répond mais ne publie aucun outil reconnu par notre
+	liste de lecture ; vérifier la version HA et l'exposition des entités.
+- `tool_error` : un outil MCP a renvoyé un résultat en erreur ; seul son nom
+	autorisé est journalisé, pas son contenu.
+- `connection`, `timeout` ou `server` : connexion, délai ou service distant.
+
+Les diagnostics ne recopient ni le message brut de l'exception, ni le corps
+HTTP, ni les URL, en-têtes, questions ou résultats d'outils. Les codes inconnus
+sont remplacés par `unknown`, pour ne pas exposer un contenu arbitraire ou un
+fragment de clé. Le masquage des secrets et des transports reste actif ; ne
+pas désactiver ces protections pour diagnostiquer une erreur.
 
 ## Données locales
 

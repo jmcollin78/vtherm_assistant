@@ -3,12 +3,13 @@ import logging
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 from vtherm_assistant.main import SUPERVISOR_ADDRESS, create_app
 from vtherm_assistant.oauth import OAuthConfig, OAuthTokens
 from vtherm_assistant.oauth_flow import SESSION_COOKIE, Session
-from vtherm_assistant.redaction import StreamingRedactor, protect_logs
+from vtherm_assistant.redaction import StreamingRedactor, log_failure, protect_logs
 from vtherm_assistant.storage import PrivateDatabase, SecretStore
 
 
@@ -82,6 +83,45 @@ def test_log_protection_masks_nested_secrets_tracebacks_and_transport_payloads(c
     assert "previously-unknown-secret" not in caplog.text
     assert "[masqué]" in caplog.text
     assert "Ordinary diagnostic" in caplog.text
+
+
+@pytest.mark.parametrize("status, code, category", [
+    (401, "invalid_api_key", "authentication"),
+    (404, "model_not_found", "model_access"),
+    (429, "insufficient_quota", "quota"),
+    (400, "unsupported_parameter", "parameters"),
+    (503, "unrecognized-secret-code", "server"),
+])
+def test_failure_diagnostic_preserves_safe_metadata_without_payloads(caplog, status, code, category) -> None:
+    class ProviderFailure(Exception):
+        status_code = status
+        body = {"error": {"code": code, "message": "secret-key-prefix user-question tool-result"}}
+        response = httpx.Response(status, request=httpx.Request("POST", "https://secret-host/?token=unknown-token"))
+
+    failure = ProviderFailure("secret-key-prefix user-question tool-result")
+    log_failure(logging.getLogger("vtherm_assistant.test"), "provider.request", failure)
+
+    assert f"http_status={status}" in caplog.text
+    assert f"category={category}" in caplog.text
+    assert f"code={code if code != 'unrecognized-secret-code' else 'unknown'}" in caplog.text
+    assert all(value not in caplog.text for value in (
+        "secret-key-prefix", "user-question", "tool-result", "secret-host", "unknown-token", "unrecognized-secret-code",
+    ))
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_failure_diagnostic_unwraps_nested_groups_and_handles_cycles(caplog) -> None:
+    response = httpx.Response(404, request=httpx.Request("GET", "http://secret-host/api/mcp"))
+    failure = httpx.HTTPStatusError("unknown-secret", request=response.request, response=response)
+    nested = ExceptionGroup("private-content", [ExceptionGroup("other-secret", [failure])])
+    log_failure(logging.getLogger("vtherm_assistant.test"), "mcp.session", nested)
+    assert "http_status=404" in caplog.text
+    assert "error_type=HTTPStatusError" in caplog.text
+    cyclic = RuntimeError("unknown-secret")
+    cyclic.__cause__ = cyclic
+    log_failure(logging.getLogger("vtherm_assistant.test"), "conversation.respond", cyclic, stage="stream")
+    assert "stage=stream" in caplog.text
+    assert all(value not in caplog.text for value in ("unknown-secret", "private-content", "other-secret", "secret-host"))
 
 
 def test_authenticated_request_masks_all_user_credentials_in_logs(tmp_path, caplog, monkeypatch) -> None:

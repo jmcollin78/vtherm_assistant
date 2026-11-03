@@ -4,6 +4,8 @@ from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import httpx
+from openai import APIStatusError
 from google.adk.models import Gemini
 from google.adk.models import LlmRequest
 from google.adk.models.lite_llm import LiteLlm
@@ -231,6 +233,37 @@ def test_litellm_provider_error_does_not_expose_user_key(tmp_path, provider, url
             logging.getLogger(__name__).exception("Erreur du fournisseur")
     assert "alice-key" not in str(error.value)
     assert "alice-key" not in caplog.text
+
+
+@pytest.mark.parametrize("status, code, category", [
+    (401, "invalid_api_key", "authentication"),
+    (404, "model_not_found", "model_access"),
+    (429, "insufficient_quota", "quota"),
+    (400, "unsupported_parameter", "parameters"),
+])
+def test_openai_failure_logs_actionable_metadata_without_sensitive_payload(tmp_path, caplog, status, code, category) -> None:
+    database = PrivateDatabase(tmp_path / "private")
+    secrets = SecretStore(database)
+    registry = ModelRegistry(ModelConfigStore(database), secrets)
+    secrets.put("alice", "openai", "alice-key")
+    registry.configure("alice", ModelConfig("openai", "model-test"))
+    model = cast(LiteLlm, registry.agent_for("alice").model)
+    response = httpx.Response(status, request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"))
+    failure = APIStatusError(
+        "alice-key unknown-key-prefix private-question",
+        response=response,
+        body={"code": code, "message": "alice-key unknown-key-prefix private-question"},
+    )
+
+    with patch("google.adk.models.lite_llm.LiteLLMClient.acompletion", new_callable=AsyncMock, side_effect=failure):
+        with pytest.raises(RuntimeError, match="La requête au fournisseur a échoué"):
+            asyncio.run(generate_responses(model, LlmRequest(model="openai/model-test")))
+
+    assert "operation=provider.generate" in caplog.text
+    assert f"http_status={status}" in caplog.text
+    assert f"code={code}" in caplog.text
+    assert f"category={category}" in caplog.text
+    assert all(value not in caplog.text for value in ("alice-key", "unknown-key-prefix", "private-question"))
 
 
 def test_ollama_unavailable_server_returns_safe_error(tmp_path) -> None:

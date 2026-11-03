@@ -79,6 +79,16 @@ Le système MUST empêcher toute modification de l'installation Home Assistant o
 ### Requirement: État et erreurs visibles
 L'interface de l'app MUST signaler une réponse en cours et les erreurs empêchant de répondre, sans présenter une réponse incomplète comme terminée.
 
+Pour toute erreur prise en charge, le système MUST fournir une explication intelligible, une action possible et une référence d'incident non sensible, distinguer les causes vérifiées des inconnues et protéger les données et droits d'accès.
+
 #### Scenario: Fournisseur indisponible
 - **WHEN** le modèle choisi ne répond pas ou retourne une erreur
 - **THEN** l'interface signale l'échec et permet de réessayer
+
+#### Scenario: Erreur intelligible et traçable quelle que soit son origine
+- **WHEN** une erreur prise en charge par l'application empêche une action ou la poursuite d'un traitement, qu'elle concerne l'authentification, la configuration, le réseau, MCP, le fournisseur, le streaming, le chargement, la restauration ou le stockage
+- **THEN** l'utilisateur reçoit une explication compréhensible de l'échec, du composant identifié et d'une action corrective ou de relance pertinente, sans cause supposée présentée comme certaine ni message uniquement générique lorsque des informations sûres sont disponibles
+- **AND** une référence d'incident opaque et non sensible est partagée avec les diagnostics backend lorsque la requête lui parvient ; ces diagnostics précisent l'opération, l'étape et les métadonnées techniques connues et autorisées
+- **AND** une erreur purement locale au navigateur est identifiée comme telle, sans prétendre qu'un diagnostic backend existe
+- **AND** les messages et diagnostics respectent les droits d'accès et ne divulguent ni secrets, ni messages bruts des services externes, ni corps HTTP, ni contenus de conversation et d'outils
+- **AND** l'interface ne présente pas l'action ou la réponse en échec comme terminée avec succès et ne supprime pas de données valides du seul fait du signalement de l'erreur
