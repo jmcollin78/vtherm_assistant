@@ -1,4 +1,5 @@
 import logging
+import re
 import traceback
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -60,16 +61,46 @@ def log_failure(logger: logging.Logger, operation: str, error: BaseException, *,
     selected = error
     status = None
     code = "unknown"
+    module = None
+    symbol = None
     while pending and len(seen) < 50:
         candidate = pending.pop()
         if id(candidate) in seen:
             continue
         seen.add(id(candidate))
         selected = candidate
+        if isinstance(candidate, ImportError):
+            candidate_module = getattr(candidate, "name", None)
+            if (
+                isinstance(candidate_module, str)
+                and all(part.isidentifier() for part in candidate_module.split("."))
+            ):
+                module = candidate_module
+                message = getattr(candidate, "msg", None)
+                if isinstance(message, str):
+                    missing_import = re.search(
+                        r"cannot import name ['\"]([^'\"]+)['\"] from ['\"]([^'\"]+)['\"]",
+                        message,
+                    )
+                    if (
+                        missing_import is not None
+                        and missing_import.group(2) == candidate_module
+                        and missing_import.group(1).isidentifier()
+                    ):
+                        symbol = missing_import.group(1)
         candidate_code = getattr(candidate, "code", None)
-        candidate_status = getattr(candidate, "status_code", None)
+        candidate_response = getattr(candidate, "response", None)
+        candidate_status = getattr(candidate_response, "status_code", None)
         if type(candidate_status) is not int:
-            candidate_status = getattr(getattr(candidate, "response", None), "status_code", None)
+            candidate_status = getattr(candidate, "status_code", None)
+            if (
+                type(candidate_status) is int
+                and candidate_status == 500
+                and type(candidate).__name__ == "APIConnectionError"
+                and getattr(candidate, "llm_provider", None) is not None
+                and candidate_response is None
+            ):
+                candidate_status = None
         if type(candidate_status) is not int and type(candidate_code) is int:
             candidate_status = candidate_code
         body = getattr(candidate, "body", None)
@@ -93,13 +124,16 @@ def log_failure(logger: logging.Logger, operation: str, error: BaseException, *,
         429: "rate_limit", 500: "server", 502: "server", 503: "server", 504: "timeout",
     }.get(status, "unexpected"))
     if category == "unexpected":
-        if isinstance(selected, TimeoutError) or type(selected).__name__ in {"ReadTimeout", "ConnectTimeout", "APITimeoutError"}:
+        if isinstance(selected, ImportError):
+            category = "dependency"
+        elif isinstance(selected, TimeoutError) or type(selected).__name__ in {"ReadTimeout", "ConnectTimeout", "APITimeoutError"}:
             category = "timeout"
         elif isinstance(selected, ConnectionError) or type(selected).__name__ in {"ConnectError", "APIConnectionError"}:
             category = "connection"
     logger.error(
-        "operation=%s stage=%s error_type=%s http_status=%s code=%s category=%s",
+        "operation=%s stage=%s error_type=%s http_status=%s code=%s category=%s module=%s symbol=%s",
         operation, stage, type(selected).__name__, status or "unknown", code, category,
+        module or "unknown", symbol or "unknown",
     )
 
 

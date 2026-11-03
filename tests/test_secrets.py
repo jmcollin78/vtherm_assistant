@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import httpx
+from litellm.exceptions import APIConnectionError
 from fastapi.testclient import TestClient
 
 from vtherm_assistant.main import SUPERVISOR_ADDRESS, create_app
@@ -122,6 +123,35 @@ def test_failure_diagnostic_unwraps_nested_groups_and_handles_cycles(caplog) -> 
     log_failure(logging.getLogger("vtherm_assistant.test"), "conversation.respond", cyclic, stage="stream")
     assert "stage=stream" in caplog.text
     assert all(value not in caplog.text for value in ("unknown-secret", "private-content", "other-secret", "secret-host"))
+
+
+def test_litellm_connection_error_does_not_report_synthetic_http_500(caplog) -> None:
+    failure = APIConnectionError("connection failed", llm_provider="openai", model="gpt-6-luna")
+    failure.__cause__ = ConnectionError("network unavailable")
+
+    log_failure(logging.getLogger("vtherm_assistant.test"), "provider.generate", failure)
+
+    assert "error_type=ConnectionError" in caplog.text
+    assert "http_status=unknown" in caplog.text
+    assert "category=connection" in caplog.text
+
+
+def test_litellm_import_error_logs_safe_module_without_error_message(caplog) -> None:
+    failure = APIConnectionError("connection failed", llm_provider="openai", model="gpt-6-luna")
+    failure.__cause__ = ImportError(
+        "cannot import name 'MissingSymbol' from 'litellm.provider_module' (/private/path)",
+        name="litellm.provider_module",
+        path="/private/path",
+    )
+
+    log_failure(logging.getLogger("vtherm_assistant.test"), "provider.generate", failure)
+
+    assert "error_type=ImportError" in caplog.text
+    assert "http_status=unknown" in caplog.text
+    assert "category=dependency" in caplog.text
+    assert "module=litellm.provider_module" in caplog.text
+    assert "symbol=MissingSymbol" in caplog.text
+    assert "/private/path" not in caplog.text
 
 
 def test_authenticated_request_masks_all_user_credentials_in_logs(tmp_path, caplog, monkeypatch) -> None:

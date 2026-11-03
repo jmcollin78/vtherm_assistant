@@ -161,12 +161,13 @@ def test_gemini_agent_executes_tool_calls(tmp_path) -> None:
     assert events[-1].content.parts[0].text == "Le thermostat est en attente."
 
 
-@pytest.mark.parametrize("provider, model_name, url, expected_model", [
-    ("openai", "model-test", None, "openai/model-test"),
-    ("anthropic", "model-test", None, "anthropic/model-test"),
-    ("ollama", "model-test", "http://ollama:11434", "ollama_chat/model-test"),
+@pytest.mark.parametrize("provider, model_name, url, expected_model, expected_reasoning_effort", [
+    ("openai", "model-test", None, "openai/model-test", None),
+    ("openai", "gpt-6-luna", None, "openai/gpt-6-luna", "none"),
+    ("anthropic", "model-test", None, "anthropic/model-test", None),
+    ("ollama", "model-test", "http://ollama:11434", "ollama_chat/model-test", None),
 ])
-def test_litellm_agent_executes_tool_calls(tmp_path, provider, model_name, url, expected_model) -> None:
+def test_litellm_agent_executes_tool_calls(tmp_path, provider, model_name, url, expected_model, expected_reasoning_effort) -> None:
     database = PrivateDatabase(tmp_path / "private")
     secrets = SecretStore(database)
     registry = ModelRegistry(ModelConfigStore(database), secrets)
@@ -208,6 +209,7 @@ def test_litellm_agent_executes_tool_calls(tmp_path, provider, model_name, url, 
     assert completion.await_count == 2
     assert completion.call_args_list[0].kwargs["model"] == expected_model
     assert completion.call_args_list[0].kwargs["tools"][0]["function"]["name"] == "read_state"
+    assert completion.call_args_list[0].kwargs.get("reasoning_effort") == expected_reasoning_effort
     assert completion.call_args_list[0].kwargs["api_key"] == ("ollama" if provider == "ollama" else "alice-key")
     if url:
         assert completion.call_args_list[0].kwargs["api_base"] == url

@@ -95,5 +95,10 @@ class ModelRegistry:
             if config.provider == "gemini":
                 model = ProtectedGemini(model=config.model, client_kwargs={"api_key": api_key, "vertexai": False})
             else:
-                model = ProtectedLiteLlm(model=f"{config.provider}/{config.model}", api_key=api_key)
+                additional_args = {}
+                if config.provider == "openai" and config.model == "gpt-6-luna":
+                    additional_args["reasoning_effort"] = "none"
+                model = ProtectedLiteLlm(
+                    model=f"{config.provider}/{config.model}", api_key=api_key, **additional_args
+                )
         return Agent(name="vtherm_assistant", model=model)
