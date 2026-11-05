@@ -3,7 +3,10 @@
     "tasks": [
         {
             "label": "VTherm: demarrer en local (HTTPS)",
-            "dependsOn": ["VTherm: proxy HTTPS local", "VTherm: application locale"],
+            "dependsOn": [
+                "VTherm: proxy HTTPS local",
+                "VTherm: application locale"
+            ],
             "dependsOrder": "parallel",
             "problemMatcher": [],
             "runOptions": { "instanceLimit": 1 }
@@ -11,8 +14,11 @@
         {
             "label": "VTherm: proxy HTTPS local",
             "type": "process",
-            "command": "rtk",
-            "args": ["proxy", "caddy", "run", "--config", "${workspaceFolder}/.vscode/Caddyfile", "--adapter", "caddyfile"],
+            "command": "/bin/sh",
+            "args": [
+                "${workspaceFolder}/.vscode/start-caddy.sh",
+                "${workspaceFolder}/.vscode/Caddyfile"
+            ],
             "options": { "cwd": "${workspaceFolder}" },
             "isBackground": true,
             "problemMatcher": {
@@ -37,8 +43,13 @@
         {
             "label": "VTherm: application locale",
             "type": "process",
-            "command": "rtk",
-            "args": ["proxy", "arch", "-arm64", "${workspaceFolder}/.venv/bin/python", "-m", "vtherm_assistant"],
+            "command": "arch",
+            "args": [
+                "-arm64",
+                "${workspaceFolder}/.venv/bin/python",
+                "-m",
+                "vtherm_assistant"
+            ],
             "options": {
                 "cwd": "${workspaceFolder}",
                 "env": {
@@ -72,10 +83,14 @@
         {
             "label": "VTherm: approuver le certificat local",
             "type": "process",
-            "command": "rtk",
-            "args": ["proxy", "caddy", "trust", "--address", "127.0.0.1:2020"],
+            "command": "caddy",
+            "args": ["trust", "--address", "127.0.0.1:2020"],
             "problemMatcher": [],
-            "presentation": { "reveal": "always", "focus": true, "panel": "dedicated" }
+            "presentation": {
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated"
+            }
         }
     ]
 }

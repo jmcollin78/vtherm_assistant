@@ -52,8 +52,9 @@ connexion sortante et peut recevoir les données utilisées pour répondre.
 
 ### Lancement local depuis VS Code
 
-Prérequis : le venv ci-dessus, Caddy (`rtk proxy brew install caddy` sur macOS)
-et Home Assistant de test accessible sur `http://127.0.0.1:8123`.
+Prérequis : le venv ci-dessus, Homebrew installé et Home Assistant de test
+accessible sur `http://127.0.0.1:8123`. La tâche du proxy installe Caddy via
+Homebrew au premier lancement s'il est absent.
 
 Dans `Cmd+P`, saisir `task VTherm: demarrer en local (HTTPS)` puis Entrée.
 Cette tâche lance le proxy Caddy et l'application avec les paramètres OAuth
