@@ -55,6 +55,18 @@ Le système MUST proposer des pistes compatibles avec les informations vérifié
 - **WHEN** l'utilisateur choisit d'étudier un plugin compatible
 - **THEN** l'assistant fournit un lien vers sa documentation d'installation sans installer ni configurer le plugin
 
+### Requirement: Recherche documentaire pour un diagnostic
+Lors d'une recherche de panne ou d'incident, le système MUST rechercher une solution ou une procédure dans la documentation officielle de Versatile Thermostat, dans la langue utilisée par l'utilisateur parmi le français, l'anglais et l'allemand. Il MUST citer les pages consultées et distinguer leurs conseils des faits observés dans l'installation.
+
+#### Scenario: Recherche de panne ou d'incident
+- **WHEN** l'utilisateur demande de diagnostiquer une panne ou un incident VTherm
+- **THEN** l'assistant recherche une solution ou une procédure dans la documentation officielle correspondant à la langue de l'utilisateur et fournit les liens des pages pertinentes
+- **AND** il présente les recommandations documentaires séparément des faits observés sur l'installation
+
+#### Scenario: Documentation sans résultat ou inaccessible
+- **WHEN** aucune page pertinente n'est trouvée ou que la documentation ne peut pas être consultée
+- **THEN** l'assistant signale cette limite, n'invente pas de solution documentaire et poursuit uniquement avec les informations disponibles
+
 ### Requirement: Données indisponibles
 Le système MUST indiquer les informations manquantes ou inaccessibles lorsqu'elles empêchent un diagnostic fiable et proposer une vérification complémentaire lorsqu'elle est possible.
 

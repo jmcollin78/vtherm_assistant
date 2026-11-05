@@ -106,6 +106,11 @@ de vérifier ses réglages de confiance. Des outils VTherm absents nécessitent
 de vérifier les versions installées, les API MCP sélectionnées et l'exposition
 des entités.
 
+Une erreur `mcp.http stage=initialize http_status=404` signifie que l'URL MCP
+attendue (`/api/mcp`) n'existe pas sur l'instance HA contactée. Vérifier que
+l'intégration **Model Context Protocol Server** est installée et configurée,
+et que `VTHERM_HA_INTERNAL_URL` pointe vers la bonne instance Home Assistant.
+
 ### Erreur 400 avec Home Assistant dans Docker
 
 Si HA répond directement sur `http://127.0.0.1:8123`, mais renvoie

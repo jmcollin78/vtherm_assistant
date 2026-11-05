@@ -2,9 +2,11 @@ import os
 import stat
 import asyncio
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 from google.adk.runners import Runner
 from google.adk.events import Event
@@ -15,10 +17,39 @@ from litellm.types.utils import Delta, ModelResponseStream, StreamingChoices
 from mcp.types import CallToolResult, TextContent, Tool
 
 from vtherm_assistant.conversations import ConversationResponse, ConversationRunner, ConversationStore, IncompleteResponse
+from vtherm_assistant.documentation import VersatileThermostatDocumentationTool
 from vtherm_assistant.main import SUPERVISOR_ADDRESS, create_app
 from vtherm_assistant.oauth import OAuthConfig, OAuthTokens
 from vtherm_assistant.oauth_flow import SESSION_COOKIE, Session
 from vtherm_assistant.storage import PrivateDatabase
+
+
+@pytest.mark.parametrize("language", ["fr", "en", "de"])
+def test_documentation_tool_searches_only_official_language_docs(language) -> None:
+    requested = []
+
+    async def handle(request):
+        requested.append(str(request.url))
+        if request.url.path == "/sitemap.xml":
+            return httpx.Response(200, text=(
+                f'<urlset><url><loc>https://www.versatile-thermostat.org/{language}/docs/feature-window/</loc></url>'
+                '<url><loc>https://attacker.example/fr/docs/feature-window/</loc></url>'
+                '</urlset>'
+            ))
+        return httpx.Response(200, text="<html><nav>ignore</nav><main>La détection fenêtre ouverte coupe le chauffage automatiquement.</main></html>")
+
+    tool = VersatileThermostatDocumentationTool(transport=httpx.MockTransport(handle))
+    result = asyncio.run(tool.run_async(
+        args={"query": "détection fenêtre chauffage", "language": language},
+        tool_context=SimpleNamespace(user_id="alice"),
+    ))
+
+    assert len(result["results"]) == 1
+    assert "détection fenêtre ouverte" in result["results"][0]["excerpt"]
+    assert requested == [
+        "https://www.versatile-thermostat.org/sitemap.xml",
+        f"https://www.versatile-thermostat.org/{language}/docs/feature-window/",
+    ]
 
 
 def test_response_stream_masks_split_secrets_and_avoids_final_duplication() -> None:
@@ -463,9 +494,12 @@ def test_conversation_agent_uses_only_users_read_tools_and_requests_clarificatio
     with patch.object(application.state.mcp, "tools_for", new_callable=AsyncMock, return_value=[safe_tool]) as tools_for:
         agent = asyncio.run(application.state.conversation_agent.for_user("alice"))
     tools_for.assert_awaited_once_with("alice", ())
-    assert agent.tools == [safe_tool]
+    assert agent.tools[0] is safe_tool
+    assert isinstance(agent.tools[1], VersatileThermostatDocumentationTool)
     assert "plusieurs thermostats ou intentions" in agent.instruction
     assert "demande une précision" in agent.instruction
+    assert "recherche de panne ou d'incident" in agent.instruction
+    assert "indique la source" in agent.instruction
     assert "Ne modifie jamais" in agent.instruction
 
 
