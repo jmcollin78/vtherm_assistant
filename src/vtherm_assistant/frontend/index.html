@@ -6,15 +6,16 @@
         <title>VTherm Assistant</title>
         <style>
             :root {
-                color-scheme: light;
-                --ink: #20302d;
-                --muted: #62706b;
-                --line: #dce4df;
-                --paper: #f7f9f7;
-                --green: #276451;
-                --dark: #173c32;
-                --accent: #c97b53;
-                --error: #a63e36;
+                color-scheme: dark;
+                --ink: #f0f6fc;
+                --heading: #e7eff9;
+                --muted: #9da7b1;
+                --line: #30363d;
+                --paper: #0d1117;
+                --brand: #e67249;
+                --dark: #2b2b2b;
+                --accent: #3eb0f2;
+                --error: #f85149;
             }
             * {
                 box-sizing: border-box;
@@ -23,10 +24,7 @@
                 margin: 0;
                 color: var(--ink);
                 background: var(--paper);
-                font:
-                    15px/1.5 "Avenir Next",
-                    "Trebuchet MS",
-                    sans-serif;
+                font: 15px/1.5 ui-sans-serif, system-ui, sans-serif;
             }
             button,
             input,
@@ -56,7 +54,7 @@
             }
             .header {
                 flex: 0 0 auto;
-                background: #fff;
+                background: #161b22;
                 border-bottom: 1px solid var(--line);
             }
             .header-inner {
@@ -75,22 +73,16 @@
                 gap: 12px;
                 min-width: 0;
             }
-            .brand-mark {
-                width: 35px;
-                height: 35px;
-                display: grid;
-                place-items: center;
-                background: var(--dark);
-                color: #fff;
-                font:
-                    bold 18px Georgia,
-                    serif;
-                border-radius: 6px;
+            .brand-logo {
+                width: 42px;
+                height: 42px;
+                flex: 0 0 auto;
+                object-fit: contain;
             }
             .brand-name {
-                font:
-                    bold 19px Georgia,
-                    serif;
+                color: var(--heading);
+                font-size: 19px;
+                font-weight: 600;
                 white-space: nowrap;
             }
             .brand-subtitle {
@@ -106,7 +98,7 @@
                 display: inline-flex;
                 align-items: center;
                 gap: 6px;
-                color: var(--green);
+                color: var(--brand);
                 font-size: 12px;
                 white-space: nowrap;
                 margin-right: 10px;
@@ -116,27 +108,27 @@
                 width: 7px;
                 height: 7px;
                 border-radius: 50%;
-                background: #4a9b79;
+                background: var(--accent);
             }
             .button {
                 border: 1px solid var(--line);
                 border-radius: 5px;
-                background: #fff;
+                background: #21262d;
                 color: var(--ink);
                 padding: 8px 12px;
                 font-size: 13px;
                 font-weight: 600;
             }
             .button:hover {
-                background: #f1f5f2;
+                background: #30363d;
             }
             .button.primary {
-                background: var(--dark);
-                border-color: var(--dark);
+                background: var(--brand);
+                border-color: var(--brand);
                 color: #fff;
             }
             .button.primary:hover {
-                background: var(--green);
+                background: #d85d37;
             }
             .button.icon {
                 width: 38px;
@@ -164,7 +156,7 @@
                 border-bottom: 1px solid var(--line);
             }
             .eyebrow {
-                color: var(--green);
+                color: var(--brand);
                 font-size: 11px;
                 font-weight: 700;
                 text-transform: uppercase;
@@ -176,9 +168,10 @@
             }
             h1 {
                 margin-top: 3px;
-                font:
-                    26px/1.2 Georgia,
-                    serif;
+                color: var(--heading);
+                font-size: 26px;
+                font-weight: 400;
+                line-height: 1.2;
             }
             .messages {
                 flex: 1;
@@ -192,10 +185,9 @@
             }
             .empty strong {
                 display: block;
-                color: var(--ink);
-                font:
-                    20px Georgia,
-                    serif;
+                color: var(--heading);
+                font-size: 20px;
+                font-weight: 500;
                 margin-bottom: 8px;
             }
             .message {
@@ -204,21 +196,28 @@
                 gap: 13px;
                 margin-bottom: 27px;
             }
+            .message.user {
+                grid-template-columns: minmax(0, 1fr);
+            }
             .avatar {
                 width: 34px;
                 height: 34px;
                 border-radius: 5px;
                 display: grid;
                 place-items: center;
-                background: #e4eee8;
-                color: var(--dark);
-                font:
-                    bold 15px Georgia,
-                    serif;
+                background: #21262d;
+                color: var(--brand);
+                font-weight: 700;
             }
             .message.user .avatar {
-                background: #f4e7df;
-                color: #8c4f34;
+                display: none;
+            }
+            .message.user > div:last-child {
+                width: min(84%, 680px);
+                justify-self: end;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
             }
             .message-label {
                 font-weight: 700;
@@ -228,6 +227,77 @@
             .message-text {
                 white-space: pre-wrap;
                 overflow-wrap: anywhere;
+            }
+            .message.user .message-label {
+                text-align: right;
+            }
+            .message.user .message-text {
+                width: fit-content;
+                max-width: 100%;
+                padding: 10px 12px;
+                border: 1px solid var(--line);
+                border-left: 3px solid var(--brand);
+                border-radius: 6px;
+                background: #161b22;
+            }
+            .message-text h1,
+            .message-text h2,
+            .message-text h3,
+            .message-text h4,
+            .message-text h5,
+            .message-text h6 {
+                color: var(--heading);
+                margin: 16px 0 8px;
+                line-height: 1.3;
+            }
+            .message-text h1 { font-size: 1.45em; }
+            .message-text h2 { font-size: 1.3em; }
+            .message-text h3,
+            .message-text h4,
+            .message-text h5,
+            .message-text h6 { font-size: 1.12em; }
+            .message-text p,
+            .message-text ul,
+            .message-text ol,
+            .message-text blockquote,
+            .message-text pre {
+                margin: 8px 0;
+            }
+            .message-text ul,
+            .message-text ol {
+                padding-left: 24px;
+            }
+            .message-text a {
+                color: var(--accent);
+                text-decoration: underline;
+                text-underline-offset: 2px;
+            }
+            .message-text code,
+            .message-text pre {
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            }
+            .message-text code {
+                background: #21262d;
+                border-radius: 4px;
+                padding: 2px 5px;
+                font-size: 0.9em;
+            }
+            .message-text pre {
+                overflow-x: auto;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                background: #161b22;
+                white-space: pre;
+            }
+            .message-text pre code {
+                padding: 0;
+                background: none;
+            }
+            .message-text blockquote {
+                padding-left: 12px;
+                border-left: 3px solid var(--brand);
+                color: var(--muted);
             }
             .message-state {
                 font-size: 12px;
@@ -241,7 +311,7 @@
                 border: 0;
                 padding: 0;
                 background: none;
-                color: var(--green);
+                color: var(--accent);
                 font-size: 12px;
                 font-weight: 700;
                 text-decoration: underline;
@@ -256,8 +326,8 @@
                 display: flex;
                 align-items: flex-end;
                 gap: 12px;
-                background: #fff;
-                border: 1px solid #b9cbc0;
+                background: #161b22;
+                border: 1px solid var(--line);
                 border-radius: 7px;
                 padding: 10px;
             }
@@ -298,9 +368,9 @@
                 padding: 24px 0;
             }
             .settings-section h2 {
-                font:
-                    20px Georgia,
-                    serif;
+                color: var(--heading);
+                font-size: 20px;
+                font-weight: 500;
                 margin-bottom: 6px;
             }
             .settings-section p {
@@ -322,11 +392,11 @@
             input,
             select {
                 width: 100%;
-                border: 1px solid #bdcbc3;
+                border: 1px solid var(--line);
                 border-radius: 5px;
                 padding: 10px;
                 color: var(--ink);
-                background: #fff;
+                background: #161b22;
             }
             .field {
                 margin-bottom: 16px;
@@ -338,16 +408,16 @@
                 gap: 8px;
             }
             .privacy {
-                border-left: 3px solid var(--accent);
-                background: #f8f0eb;
+                border-left: 3px solid var(--brand);
+                background: #241b18;
                 padding: 12px 14px;
-                color: #5e4d44;
+                color: #f0c4b2;
                 font-size: 13px;
                 margin: 4px 0 18px;
             }
             .feedback {
                 min-height: 22px;
-                color: var(--green);
+                color: var(--brand);
                 font-size: 13px;
                 margin-top: 10px;
             }
@@ -369,7 +439,7 @@
                 text-align: center;
             }
             .login a {
-                color: var(--green);
+                color: var(--accent);
             }
             [hidden] {
                 display: none !important;
@@ -385,6 +455,10 @@
                 }
                 .brand-name {
                     font-size: 17px;
+                }
+                .brand-logo {
+                    width: 36px;
+                    height: 36px;
                 }
                 .header-actions .new-label {
                     display: none;
@@ -419,7 +493,7 @@
             <header class="header">
                 <div class="header-inner">
                     <div class="brand">
-                        <div class="brand-mark" aria-hidden="true">V</div>
+                        <img class="brand-logo" src="/brand/logo.png" alt="Versatile Thermostat" />
                         <div>
                             <div class="brand-name">VTherm Assistant</div>
                             <div class="brand-subtitle">Versatile Thermostat</div>
@@ -573,6 +647,107 @@
                 byId("delete-key").hidden = local;
                 byId("provider-key").value = "";
             }
+            function appendInlineMarkdown(parent, text) {
+                const pattern = /(\[[^\]\n]+\]\(https:\/\/[^\s)]+\)|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\*[^*\n]+\*|_[^_\n]+_)/g;
+                let position = 0;
+                for (const match of text.matchAll(pattern)) {
+                    parent.append(document.createTextNode(text.slice(position, match.index)));
+                    const token = match[0];
+                    const link = token.match(/^\[([^\]]+)\]\((https:\/\/[^\s)]+)\)$/);
+                    if (link) {
+                        const anchor = document.createElement("a");
+                        anchor.textContent = link[1];
+                        anchor.href = link[2];
+                        anchor.target = "_blank";
+                        anchor.rel = "noopener noreferrer";
+                        parent.append(anchor);
+                    } else {
+                        const marker = token.startsWith("**") || token.startsWith("__") ? 2 : 1;
+                        const tag = token.startsWith("`") ? "code" : marker === 2 ? "strong" : token.startsWith("*") || token.startsWith("_") ? "em" : null;
+                        if (tag) {
+                            const element = document.createElement(tag);
+                            element.textContent = token.slice(marker, -marker);
+                            parent.append(element);
+                        } else parent.append(document.createTextNode(token));
+                    }
+                    position = match.index + token.length;
+                }
+                parent.append(document.createTextNode(text.slice(position)));
+            }
+            function renderMarkdown(container, text) {
+                const lines = text.replace(/\r\n?/g, "\n").split("\n");
+                const isBlockStart = (line) => /^(?:#{1,6}\s|```|>\s?|[-+*]\s|\d+[.)]\s|(?:-{3,}|\*{3,}|_{3,})\s*$)/.test(line);
+                container.replaceChildren();
+                for (let index = 0; index < lines.length;) {
+                    const line = lines[index];
+                    if (!line.trim()) {
+                        index++;
+                        continue;
+                    }
+                    if (line.startsWith("```")) {
+                        const code = document.createElement("code");
+                        const content = [];
+                        index++;
+                        while (index < lines.length && !lines[index].startsWith("```")) content.push(lines[index++]);
+                        if (index < lines.length) index++;
+                        code.textContent = content.join("\n");
+                        const pre = document.createElement("pre");
+                        pre.append(code);
+                        container.append(pre);
+                        continue;
+                    }
+                    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+                    if (heading) {
+                        const element = document.createElement(`h${heading[1].length}`);
+                        appendInlineMarkdown(element, heading[2]);
+                        container.append(element);
+                        index++;
+                        continue;
+                    }
+                    if (/^(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+                        container.append(document.createElement("hr"));
+                        index++;
+                        continue;
+                    }
+                    if (/^>\s?/.test(line)) {
+                        const quote = document.createElement("blockquote");
+                        const content = [];
+                        while (index < lines.length && /^>\s?/.test(lines[index])) content.push(lines[index++].replace(/^>\s?/, ""));
+                        const paragraph = document.createElement("p");
+                        content.forEach((item, itemIndex) => {
+                            if (itemIndex) paragraph.append(document.createElement("br"));
+                            appendInlineMarkdown(paragraph, item);
+                        });
+                        quote.append(paragraph);
+                        container.append(quote);
+                        continue;
+                    }
+                    const listItem = line.match(/^(?:([-+*])|(\d+)[.)])\s+(.*)$/);
+                    if (listItem) {
+                        const ordered = Boolean(listItem[2]);
+                        const list = document.createElement(ordered ? "ol" : "ul");
+                        if (ordered) list.start = Number(listItem[2]);
+                        while (index < lines.length) {
+                            const item = lines[index].match(/^(?:([-+*])|(\d+)[.)])\s+(.*)$/);
+                            if (!item || Boolean(item[2]) !== ordered) break;
+                            const element = document.createElement("li");
+                            appendInlineMarkdown(element, item[3]);
+                            list.append(element);
+                            index++;
+                        }
+                        container.append(list);
+                        continue;
+                    }
+                    const paragraph = document.createElement("p");
+                    const content = [];
+                    while (index < lines.length && lines[index].trim() && !isBlockStart(lines[index])) content.push(lines[index++]);
+                    content.forEach((item, itemIndex) => {
+                        if (itemIndex) paragraph.append(document.createElement("br"));
+                        appendInlineMarkdown(paragraph, item);
+                    });
+                    container.append(paragraph);
+                }
+            }
             function addMessage(role, text) {
                 const empty = messages.querySelector(".empty");
                 if (empty) empty.remove();
@@ -589,13 +764,14 @@
                 label.className = "message-label";
                 label.textContent = role === "user" ? "Vous" : "Assistant";
                 body.className = "message-text";
-                body.textContent = text;
+                if (role === "assistant") renderMarkdown(body, text);
+                else body.textContent = text;
                 state.className = "message-state";
                 content.append(label, body, state);
                 row.append(avatar, content);
                 messages.append(row);
                 messages.scrollTop = messages.scrollHeight;
-                return { row, body, state };
+                return { row, body, state, text };
             }
             function showEmpty() {
                 if (!messages.children.length) {
@@ -647,7 +823,8 @@
                             if (line) {
                                 const event = JSON.parse(line);
                                 if (event.type === "delta") {
-                                    answer.body.textContent += event.text;
+                                    answer.text += event.text;
+                                    renderMarkdown(answer.body, answer.text);
                                     messages.scrollTop = messages.scrollHeight;
                                 } else if (event.type === "notice") answer.state.textContent = event.message;
                                 else if (event.type === "error") failure = event.message;

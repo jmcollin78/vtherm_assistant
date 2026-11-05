@@ -17,6 +17,7 @@ from .redaction import protect_logs, redact_data
 from .storage import ModelConfigStore, PrivateDatabase, SecretStore
 
 FRONTEND = Path(__file__).parent / "frontend" / "index.html"
+BRAND_LOGO = Path(__file__).parent / "frontend" / "brand-logo.png"
 SUPERVISOR_ADDRESS = "172.30.32.2"
 SECRET_NAMES = frozenset({"home_assistant", "gemini", "openai", "anthropic"})
 
@@ -51,7 +52,7 @@ class AccessMiddleware:
             method = scope.get("method")
             path = scope["path"]
             if scope["type"] == "http" and (
-                (method == "GET" and path in ("/", "/auth/login", "/auth/callback"))
+                (method == "GET" and path in ("/", "/brand/logo.png", "/auth/login", "/auth/callback"))
                 or (method == "POST" and path == "/auth/logout")
             ):
                 await self.app(scope, receive, send)
@@ -136,6 +137,10 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
     @application.get("/", include_in_schema=False)
     def index() -> FileResponse:
         return FileResponse(FRONTEND)
+
+    @application.get("/brand/logo.png", include_in_schema=False)
+    def brand_logo() -> FileResponse:
+        return FileResponse(BRAND_LOGO, media_type="image/png")
 
     @application.get("/api/conversation")
     def get_conversation(request: Request) -> JSONResponse:

@@ -21,6 +21,12 @@ def test_frontend_is_served() -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "VTherm Assistant" in response.text
+    assert 'src="/brand/logo.png"' in response.text
+
+    logo = client.get("/brand/logo.png")
+    assert logo.status_code == 200
+    assert logo.headers["content-type"] == "image/png"
+    assert logo.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_private_endpoints_are_unavailable() -> None:

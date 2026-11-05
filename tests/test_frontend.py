@@ -29,7 +29,7 @@ def browser_frontend(page, request):
     state = {
         "messages": [{"role": "user", "text": "État du salon ?"}, {"role": "assistant", "text": "En attente."}],
         "model": {"provider": "gemini", "model": "model-test", "url": None},
-        "failures": {}, "calls": [], "stream": "complete", "errors": [],
+        "failures": {}, "calls": [], "stream": "complete", "stream_events": None, "stream_text": None, "errors": [],
     }
     page.on("pageerror", lambda error: state["errors"].append(str(error)))
 
@@ -60,11 +60,11 @@ def browser_frontend(page, request):
             if state["stream"] == "pending":
                 state["pending"] = route
                 return
-            events = [{"type": "delta", "text": "Je consulte le thermostat. "}, {"type": "delta", "text": "En attente."}]
+            events = state["stream_events"] or [{"type": "delta", "text": "Je consulte le thermostat. "}, {"type": "delta", "text": "En attente."}]
             if state["stream"] == "complete":
-                events.append({"type": "complete"})
+                events = [*events, {"type": "complete"}]
                 state["messages"] += [{"role": "user", "text": route.request.post_data_json["question"]},
-                                      {"role": "assistant", "text": "Je consulte le thermostat. En attente."}]
+                                      {"role": "assistant", "text": state["stream_text"] or "Je consulte le thermostat. En attente."}]
             elif state["stream"] == "error":
                 events.append({"type": "error", "message": "Fournisseur indisponible ; réessayez."})
             route.fulfill(content_type="application/x-ndjson", body="".join(json.dumps(event) + "\n" for event in events))
@@ -196,6 +196,37 @@ def test_frontend_conversation_stream_and_retry(frontend, stream_mode):
     page.reload()
     expect(page.locator(".message")).to_have_count(4)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_frontend_renders_markdown_safely_in_history_and_stream(frontend):
+    page, state = frontend
+    markdown = (
+        "## Diagnostic\n\n**Fait observé** et _hypothèse_.\n\n"
+        "- Fenêtre ouverte\n- `climate.salon`\n\n"
+        "[Documentation](https://www.versatile-thermostat.org/fr/docs/feature-window/)\n\n"
+        "<img src=x onerror=alert(1)> <script>window.markdownPwned = true</script>"
+    )
+    state["messages"] = [{"role": "user", "text": "Pourquoi ?"}, {"role": "assistant", "text": markdown}]
+    page.reload()
+    body = page.locator(".message.assistant .message-text").last
+    expect(body.locator("h2")).to_have_text("Diagnostic")
+    expect(body.locator("strong")).to_have_text("Fait observé")
+    expect(body.locator("em")).to_have_text("hypothèse")
+    expect(body.locator("li")).to_have_count(2)
+    expect(body.locator("code").first).to_have_text("climate.salon")
+    expect(body.locator("a")).to_have_attribute("href", "https://www.versatile-thermostat.org/fr/docs/feature-window/")
+    assert body.locator("img, script").count() == 0
+    assert "<img src=x onerror=alert(1)>" in body.inner_text()
+
+    state["stream_text"] = markdown
+    state["stream_events"] = [{"type": "delta", "text": markdown[:48]}, {"type": "delta", "text": markdown[48:]}]
+    page.locator("#question").fill("Explique-moi ce résultat")
+    page.locator("#send").click()
+    streamed = page.locator(".message.assistant .message-text").last
+    expect(streamed.locator("h2")).to_have_text("Diagnostic")
+    expect(streamed.locator("strong")).to_have_text("Fait observé")
+    assert streamed.locator("img, script").count() == 0
+    assert page.evaluate("window.markdownPwned") is None
 
 
 def test_frontend_shows_inflight_response(frontend):
