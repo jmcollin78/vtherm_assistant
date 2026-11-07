@@ -1,0 +1,7 @@
+configuration:
+  ha_internal_url:
+    name: Internal Home Assistant address
+    description: >-
+      HTTP or HTTPS Core base URL reachable from the app, without a path or token.
+      Custom ports are supported. HTTP requires a trusted internal network;
+      HTTPS keeps certificate verification. Default: http://homeassistant:8123.
