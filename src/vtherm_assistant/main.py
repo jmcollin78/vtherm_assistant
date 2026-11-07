@@ -69,7 +69,7 @@ class AccessMiddleware:
             if scope["type"] == "websocket":
                 await send({"type": "websocket.close", "code": 1008})
             else:
-                response = JSONResponse({"detail": "Accès refusé"}, status_code=403, headers={"Cache-Control": "no-store"})
+                response = JSONResponse({"detail": "Accès refusé"}, status_code=403, headers={"Cache-Control": "no-store", "X-VTherm-Deployment-Mode": self.mode})
                 await response(scope, receive, send)
             return
         scope.setdefault("state", {})["user_id"] = user_id

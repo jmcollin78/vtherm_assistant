@@ -10,7 +10,8 @@ python3.14 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
 python -m playwright install chromium
-python -m pytest -q
+python -m pytest -q --ignore=tests/test_frontend.py --ignore=tests/test_packaging.py
+python -m pytest -q tests/test_frontend.py tests/test_packaging.py
 python -m vtherm_assistant
 ```
 
@@ -18,6 +19,11 @@ La suite comprend des tests Chromium sur ordinateur et mobile. Pour les lancer
 seuls : `python -m pytest -q tests/test_frontend.py`. Ils utilisent des services
 simulés, y compris pour les parcours reliés au backend ; aucune clé réelle ni
 installation HA n'est nécessaire.
+
+Backend et navigateur s'exécutent dans deux processus pytest pour séparer
+les boucles de Playwright synchrone et d'`asyncio.run()`. Tous les fichiers de
+tests sont conservés. Les contrôles Docker nécessitent `VTHERM_TEST_IMAGE` et
+une image construite ; voir le [guide de construction](docs/ha-app-build.md).
 
 L'interface de développement est accessible à l'adresse <http://127.0.0.1:8765/>.
 Le projet est en cours de construction. Les parcours authentifiés nécessitent
@@ -153,11 +159,62 @@ un lancement par le Supervisor, qui fournit `SUPERVISOR_TOKEN` au backend et
 transmet l'identité de l'utilisateur. Ce jeton doit rester secret et ne doit
 jamais être transmis au navigateur.
 
+Le lancement ingress lit les options JSON de l'app dans `/data/options.json`
+avant de charger le backend. L'option `ha_internal_url` est prioritaire sur
+`VTHERM_HA_INTERNAL_URL` ; si elle est absente d'un objet d'options valide,
+le défaut est `http://homeassistant:8123`. L'adresse doit être une base HTTP
+ou HTTPS sans chemin, identifiants, paramètres ni fragment ; un port
+personnalisé est accepté. Une configuration explicitement invalide ou un fichier
+illisible bloque le lancement avec un message sans contenu brut des options.
+
+Sous Supervisor, l'absence du fichier bloque également le lancement. Pour
+les tests ingress hors Supervisor, un fichier absent conserve l'adresse fournie
+par environnement, après validation, ou l'état non configuré si elle est absente.
+Le mode autonome ne lit jamais ce fichier et conserve sa configuration OAuth.
+
+Le jeton Supervisor sert à vérifier les droits de l'utilisateur auprès de Core,
+pas à remplacer le jeton MCP. Chaque administrateur configure son jeton HA et
+ses clés fournisseur dans l'interface ; ces secrets ne sont pas des options
+globales du paquet. Avec une adresse interne HTTP, jetons et données circulent
+en clair sur le réseau interne : n'utiliser qu'un réseau de confiance ou choisir
+HTTPS, sans désactiver la vérification des certificats. Une instance Core avec
+TLS ou port personnalisé nécessite une adresse adaptée.
+
 Le backend refuse les connexions qui ne proviennent pas du Supervisor et
 vérifie les droits de l'utilisateur auprès de Home Assistant. Le lancement
 doit passer par `python -m vtherm_assistant`, qui désactive l'interprétation
 des en-têtes de proxy pour conserver l'adresse du client réseau réel. Le
 paquet d'installation HA OS n'est pas encore disponible.
+
+La construction Linux, les dépendances figées et les essais avec volumes
+temporaires sont décrits dans le [guide de construction](docs/ha-app-build.md).
+
+L'interface est servie sous un préfixe variable, par exemple
+`/api/hassio_ingress/<session>/`. Les ressources, dont le logo, et les appels
+API utilisent des chemins relatifs pour rester dans ce préfixe. Aucun port
+supplémentaire ni carte de tableau de bord n'est nécessaire. Un refus ingress
+ne propose pas de connexion OAuth : vérifier la session HA et les droits
+administrateur, sans contourner la vérification du backend.
+
+Pour vérifier cette tranche avec des services simulés :
+
+```sh
+python -m pytest -q tests/test_app.py tests/test_ha_auth.py
+python -m pytest -q tests/test_frontend.py
+```
+
+Les tests navigateur couvrent le préfixe ingress, le chargement du logo,
+la configuration, la conversation et sa suppression sur ordinateur et mobile.
+Le proxy de test retire le préfixe avant les routes internes. Les réponses
+NDJSON y sont simulées et peuvent être livrées en un seul corps : ces tests
+ne prouvent pas la progression réseau à travers le vrai Supervisor.
+
+Lors de la validation sur HA OS, ouvrir l'app par ingress et vérifier que
+plusieurs fragments de réponse apparaissent avant la fin de la requête.
+Une réponse interrompue doit être signalée comme incomplète et pouvoir être
+relancée. Ne pas activer `ingress_stream` pour résoudre un problème de réponses
+progressives : cette option concerne les corps des requêtes entrantes.
+Ne pas arrêter HA ou modifier le chauffage pour simuler une panne.
 
 ### Home Assistant Container : OAuth
 

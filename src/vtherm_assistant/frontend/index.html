@@ -493,7 +493,7 @@
             <header class="header">
                 <div class="header-inner">
                     <div class="brand">
-                        <img class="brand-logo" src="/brand/logo.png" alt="Versatile Thermostat" />
+                        <img class="brand-logo" src="brand/logo.png" alt="Versatile Thermostat" />
                         <div>
                             <div class="brand-name">VTherm Assistant</div>
                             <div class="brand-subtitle">Versatile Thermostat</div>
@@ -786,6 +786,9 @@
             async function loadConversation() {
                 const response = await request("api/conversation");
                 if (response.status === 403) {
+                    const ingress = response.headers.get("X-VTherm-Deployment-Mode") === "ingress";
+                    byId("login").querySelector("h1").textContent = ingress ? "Accès refusé" : "Connexion requise";
+                    byId("login").querySelector("a").hidden = ingress;
                     byId("login").hidden = false;
                     return;
                 }

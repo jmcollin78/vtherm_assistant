@@ -9,7 +9,7 @@ from google.genai import types
 from mcp.types import CallToolResult, TextContent, Tool
 from playwright.sync_api import expect, sync_playwright
 
-from vtherm_assistant.main import FRONTEND, SUPERVISOR_ADDRESS, create_app
+from vtherm_assistant.main import BRAND_LOGO, FRONTEND, SUPERVISOR_ADDRESS, create_app
 from vtherm_assistant.models import ModelConfig
 
 
@@ -30,19 +30,30 @@ def browser_frontend(page, request):
         "messages": [{"role": "user", "text": "État du salon ?"}, {"role": "assistant", "text": "En attente."}],
         "model": {"provider": "gemini", "model": "model-test", "url": None},
         "failures": {}, "calls": [], "stream": "complete", "stream_events": None, "stream_text": None, "errors": [],
+        "prefix": "", "request_paths": [],
     }
     page.on("pageerror", lambda error: state["errors"].append(str(error)))
 
     def handle(route):
         path, method = urlsplit(route.request.url).path, route.request.method
+        state["request_paths"].append(path)
+        if state["prefix"]:
+            if not path.startswith(state["prefix"] + "/"):
+                route.fulfill(status=404)
+                return
+            path = path[len(state["prefix"]):]
         state["calls"].append((method, path, route.request.post_data_json if route.request.post_data else None))
         failure = state["failures"].get((method, path))
         if failure == "network":
             route.abort("failed")
         elif failure == "http":
             route.fulfill(status=503, json={"detail": "FAKE_SECRET_DO_NOT_DISPLAY"})
+        elif failure in {"ingress", "standalone"}:
+            route.fulfill(status=403, headers={"X-VTherm-Deployment-Mode": failure}, json={"detail": "Accès refusé"})
         elif path == "/":
             route.fulfill(content_type="text/html", body=FRONTEND.read_text())
+        elif path == "/brand/logo.png":
+            route.fulfill(content_type="image/png", body=BRAND_LOGO.read_bytes())
         elif path == "/api/model":
             if method == "GET" and state.get("hold_model"):
                 state["pending_model"] = route
@@ -88,6 +99,55 @@ def open_settings(page):
 def assert_empty_secrets(page):
     expect(page.locator("#provider-key")).to_have_value("")
     expect(page.locator("#ha-key")).to_have_value("")
+
+
+def test_frontend_navigation_under_ingress_prefix(frontend):
+    page, state = frontend
+    state["prefix"] = "/api/hassio_ingress/test-session"
+    state["request_paths"].clear()
+    state["calls"].clear()
+    page.goto("http://assistant.test" + state["prefix"] + "/")
+    expect(page.locator("#conversation")).to_be_visible()
+    assert page.locator(".brand-logo").evaluate("image => image.complete && image.naturalWidth > 0")
+
+    open_settings(page)
+    page.locator("#model").fill("ingress-model")
+    page.locator("#model-form button[type=submit]").click()
+    expect(page.locator("#model-feedback")).to_have_text("Configuration enregistrée.")
+    assert state["model"]["model"] == "ingress-model"
+    page.locator("#back").click()
+    page.locator("#question").fill("État du thermostat ?")
+    page.locator("#send").click()
+    expect(page.locator(".message.assistant").last.locator(".message-text")).to_have_text("Je consulte le thermostat. En attente.")
+    expect(page.locator(".message-state").last).to_have_text("")
+    page.reload()
+    expect(page.locator(".message")).to_have_count(4)
+    page.locator("#new").click()
+    expect(page.locator(".empty")).to_be_visible()
+    page.reload()
+    expect(page.locator(".empty")).to_be_visible()
+
+    assert all(path.startswith(state["prefix"] + "/") for path in state["request_paths"])
+    assert ("GET", "/brand/logo.png", None) in state["calls"]
+    assert {("GET", "/api/model"), ("PUT", "/api/model"), ("POST", "/api/conversation"),
+            ("DELETE", "/api/conversation")} <= {(method, path) for method, path, _payload in state["calls"]}
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("mode", ["ingress", "standalone"])
+def test_frontend_refusal_does_not_offer_oauth_in_ingress(frontend, mode):
+    page, state = frontend
+    state["failures"][("GET", "/api/conversation")] = mode
+    page.reload()
+    expect(page.locator("#login")).to_be_visible()
+    expect(page.locator("#conversation")).to_be_hidden()
+    if mode == "ingress":
+        expect(page.locator("#login h1")).to_have_text("Accès refusé")
+        expect(page.locator("#login a")).to_be_hidden()
+    else:
+        expect(page.locator("#login h1")).to_have_text("Connexion requise")
+        expect(page.locator("#login a")).to_be_visible()
+        expect(page.locator("#login a")).to_have_attribute("href", "auth/login")
 
 
 @pytest.mark.parametrize("provider_name", ["gemini", "openai", "anthropic", "ollama"])

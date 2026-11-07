@@ -1,0 +1,9 @@
+**
+!pyproject.toml
+!requirements-ha.lock
+!src/
+!src/vtherm_assistant/
+!src/vtherm_assistant/**
+**/__pycache__
+**/*.py[cod]
+**/.*
