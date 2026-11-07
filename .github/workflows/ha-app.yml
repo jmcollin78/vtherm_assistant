@@ -24,12 +24,12 @@ jobs:
           python -m pip install pip==26.2.2
           python -m pip install --constraint requirements-ha.lock --build-constraint requirements-ha.lock '.[test]'
           python -m playwright install --with-deps chromium
-      - uses: docker/setup-docker-action@v4
+      - uses: docker/setup-docker-action@v5
         with:
           daemon-config: |
             {"features": {"containerd-snapshotter": true}}
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
       - name: Validate GitHub Actions workflow
         run: docker run --rm -v "$GITHUB_WORKSPACE":/repo:ro --workdir /repo rhysd/actionlint:1.7.7@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 .github/workflows/ha-app.yml
       - name: Build both architectures from source root
@@ -40,7 +40,7 @@ jobs:
           python -m pytest -q tests/test_frontend.py tests/test_packaging.py
       - name: Prepare unpublished catalogue
         run: python scripts/package_ha_app.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ha-app-unpublished
           path: dist/ha-app/

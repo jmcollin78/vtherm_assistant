@@ -25,8 +25,8 @@ def test_ci_prepares_without_publishing():
     job = workflow["jobs"]["verify"]
     assert job["env"]["VTHERM_TEST_IMAGE"] == "vtherm-assistant:ci"
     actions = {step["uses"] for step in job["steps"] if "uses" in step}
-    assert {"docker/setup-docker-action@v4", "docker/setup-qemu-action@v3",
-            "docker/setup-buildx-action@v3"} <= actions
+    assert {"docker/setup-docker-action@v5", "docker/setup-qemu-action@v4",
+            "docker/setup-buildx-action@v4", "actions/upload-artifact@v7"} <= actions
     commands = "\n".join(step["run"] for step in job["steps"] if "run" in step)
     assert "--platform linux/arm64,linux/amd64 --load -t vtherm-assistant:ci ." in commands
     assert "python -m pytest -q" in commands
