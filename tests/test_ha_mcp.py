@@ -186,7 +186,12 @@ def test_mcp_accepts_assist_prefixed_vtherm_read_tools(tmp_path, name, arguments
         Tool(name="assist__versatile_thermostat__set_temperature", inputSchema={"type": "object"},
              annotations={"readOnlyHint": True}),
     ])
-    session.call_tool.return_value = CallToolResult(content=[TextContent(type="text", text="read-result")])
+    inventory = {"count": 10, "thermostats": [
+        {"entity_id": f"climate.test_thermostat_{index}", "name": f"Thermostat test {index}"}
+        for index in range(10)
+    ]}
+    result_text = json.dumps(inventory) if name.endswith("__list_vtherms") else "read-result"
+    session.call_tool.return_value = CallToolResult(content=[TextContent(type="text", text=result_text)])
 
     @asynccontextmanager
     async def session_for(_user_id):
@@ -199,7 +204,11 @@ def test_mcp_accepts_assist_prefixed_vtherm_read_tools(tmp_path, name, arguments
         if arguments:
             assert tools[0].input_schema["required"] == ["entity_id"]
         result = asyncio.run(tools[0].run_async(args=arguments, tool_context=SimpleNamespace(user_id="alice")))
-        assert result["content"][0]["text"] == "read-result"
+        assert result["content"][0]["text"] == result_text
+        if name.endswith("__list_vtherms"):
+            returned_inventory = json.loads(result["content"][0]["text"])
+            assert returned_inventory == inventory
+            assert returned_inventory["count"] == len(returned_inventory["thermostats"]) == 10
         for denied in ("assist__versatile_thermostat__set_temperature",
                        "assist__versatile_thermostat__set_preset",
                        "assist__versatile_thermostat__set_hvac_mode",

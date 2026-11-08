@@ -333,6 +333,100 @@ def test_conversation_route_streams_for_verified_user_and_masks_session_tokens(t
     assert application.state.conversations.load("bob") is None
 
 
+@pytest.mark.parametrize("provider_name, model_name", [
+    ("gemini", "model-test"), ("openai", "model-test"),
+    ("anthropic", "model-test"), ("ollama", "model-test"), ("openai", "gpt-6-luna"),
+])
+def test_ingress_route_emits_first_fragment_before_producer_finishes(tmp_path, monkeypatch, provider_name, model_name) -> None:
+    monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")
+
+    async def verify_admin(user_id):
+        return user_id == "alice"
+
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
+    from vtherm_assistant.models import ModelConfig
+
+    if provider_name != "ollama":
+        application.state.secrets.put("alice", provider_name, "fake-provider-key")
+    application.state.models.configure("alice", ModelConfig(
+        provider_name, model_name, "http://ollama:11434" if provider_name == "ollama" else None
+    ))
+
+    async def check_progress():
+        release = asyncio.Event()
+        sent = asyncio.Queue()
+        received_request = False
+
+        async def provider_stream():
+            for index, text in enumerate(("Premier fragment.", " Suite.")):
+                if index:
+                    await release.wait()
+                if provider_name == "gemini":
+                    yield types.GenerateContentResponse(candidates=[types.Candidate(
+                        content=types.Content(role="model", parts=[types.Part(text=text)])
+                    )])
+                else:
+                    yield ModelResponseStream(model=model_name, choices=[StreamingChoices(
+                        index=0, delta=Delta(content=text)
+                    )])
+            if provider_name != "gemini":
+                yield ModelResponseStream(model=model_name, choices=[StreamingChoices(index=0, finish_reason="stop")])
+
+        async def receive():
+            nonlocal received_request
+            if not received_request:
+                received_request = True
+                return {"type": "http.request", "body": b'{"question":"Test"}', "more_body": False}
+            await asyncio.Event().wait()
+
+        scope = {
+            "type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
+            "http_version": "1.1", "method": "POST", "scheme": "http",
+            "path": "/api/conversation", "raw_path": b"/api/conversation", "query_string": b"",
+            "root_path": "", "server": ("vtherm.test", 8099), "client": (SUPERVISOR_ADDRESS, 12345),
+            "headers": [(b"host", b"vtherm.test"), (b"content-type", b"application/json"),
+                        (b"x-remote-user-id", b"alice"), (b"x-vtherm-request", b"1")],
+        }
+        with patch.object(application.state.mcp, "tools_for", new_callable=AsyncMock, return_value=[]), \
+             patch("google.genai.Client") as provider, \
+             patch("google.adk.models.lite_llm.LiteLLMClient.acompletion", new_callable=AsyncMock) as completion:
+            if provider_name == "gemini":
+                provider.return_value.aio.models.generate_content_stream = AsyncMock(return_value=provider_stream())
+            else:
+                completion.return_value = provider_stream()
+            request_task = asyncio.create_task(application(scope, receive, sent.put))
+            try:
+                async with asyncio.timeout(5):
+                    start = await sent.get()
+                    assert start["type"] == "http.response.start"
+                    assert start["status"] == 200
+                    assert dict(start["headers"])[b"x-accel-buffering"] == b"no"
+                    first = await sent.get()
+                    assert first["type"] == "http.response.body"
+                    assert first["more_body"] is True
+                    assert json.loads(first["body"]) == {"type": "delta", "text": "Premier fragment."}
+                    assert not request_task.done()
+                    release.set()
+                    await request_task
+                remaining = []
+                while not sent.empty():
+                    remaining.append(sent.get_nowait())
+                assert any(b'"type": "complete"' in message.get("body", b"") for message in remaining)
+                assert application.state.conversations.load("alice")[0][-1]["text"] == "Premier fragment. Suite."
+                if provider_name != "gemini":
+                    assert completion.call_args.kwargs["stream"] is True
+                if provider_name == "openai" and model_name == "gpt-6-luna":
+                    assert completion.call_args.kwargs["model"] == "openai/gpt-6-luna"
+                    assert completion.call_args.kwargs["reasoning_effort"] == "none"
+            finally:
+                release.set()
+                if not request_task.done():
+                    request_task.cancel()
+                await asyncio.gather(request_task, return_exceptions=True)
+
+    asyncio.run(check_progress())
+
+
 @pytest.mark.parametrize("provider_name", ["gemini", "ollama"])
 def test_conversation_route_reports_provider_failure_without_exposing_credentials(tmp_path, monkeypatch, provider_name) -> None:
     monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")

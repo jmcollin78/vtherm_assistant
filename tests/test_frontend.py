@@ -289,6 +289,40 @@ def test_frontend_renders_markdown_safely_in_history_and_stream(frontend):
     assert page.evaluate("window.markdownPwned") is None
 
 
+def test_frontend_renders_markdown_tables_in_history_and_stream(frontend):
+    page, state = frontend
+    markdown = (
+        "Inventaire disponible :\n"
+        "| Nom | Entité | Type |\n"
+        "| :--- | --- | ---: |\n"
+        "| **Thermostat salon** | `climate.salon_thermostat_salon` | over_climate |\n"
+        "| Sdb \\| étage | `climate.thermostat_sdb` | over_climate |\n\n"
+        "<img src=x onerror=alert(1)>"
+    )
+    state["prefix"] = "/api/hassio_ingress/test-session"
+    state["messages"] = [{"role": "assistant", "text": markdown}]
+    page.goto("http://assistant.test" + state["prefix"] + "/")
+
+    def check_table():
+        body = page.locator(".message.assistant .message-text").last
+        expect(body.locator("thead th")).to_have_text(["Nom", "Entité", "Type"])
+        expect(body.locator("tbody tr")).to_have_count(2)
+        expect(body.locator("tbody tr").first.locator("code")).to_have_text("climate.salon_thermostat_salon")
+        expect(body.locator("tbody tr").last.locator("td").first).to_have_text("Sdb | étage")
+        expect(body.locator("strong")).to_have_text("Thermostat salon")
+        assert body.locator("img, script").count() == 0
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+    check_table()
+    state["stream_text"] = markdown
+    state["stream_events"] = [{"type": "delta", "text": markdown[:70]}, {"type": "delta", "text": markdown[70:]}]
+    page.locator("#question").fill("Liste les thermostats")
+    page.locator("#send").click()
+    check_table()
+    page.reload()
+    check_table()
+
+
 def test_frontend_shows_inflight_response(frontend):
     page, state = frontend
     state["stream"] = "pending"

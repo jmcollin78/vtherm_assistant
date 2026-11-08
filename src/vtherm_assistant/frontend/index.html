@@ -299,6 +299,28 @@
                 border-left: 3px solid var(--brand);
                 color: var(--muted);
             }
+            .message-text .table-scroll {
+                max-width: 100%;
+                overflow-x: auto;
+                margin: 12px 0;
+            }
+            .message-text table {
+                width: 100%;
+                border-collapse: collapse;
+                white-space: normal;
+            }
+            .message-text th,
+            .message-text td {
+                min-width: 110px;
+                padding: 8px 10px;
+                border: 1px solid var(--line);
+                text-align: left;
+                vertical-align: top;
+            }
+            .message-text th {
+                color: var(--heading);
+                background: #21262d;
+            }
             .message-state {
                 font-size: 12px;
                 color: var(--muted);
@@ -677,6 +699,13 @@
             function renderMarkdown(container, text) {
                 const lines = text.replace(/\r\n?/g, "\n").split("\n");
                 const isBlockStart = (line) => /^(?:#{1,6}\s|```|>\s?|[-+*]\s|\d+[.)]\s|(?:-{3,}|\*{3,}|_{3,})\s*$)/.test(line);
+                const tableCells = (line) => line.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "")
+                    .split(/(?<!\\)\|/).map(cell => cell.trim().replace(/\\\|/g, "|"));
+                const isTableStart = (index) => {
+                    if (!lines[index]?.includes("|") || !lines[index + 1]?.includes("|")) return false;
+                    const headers = tableCells(lines[index]), separators = tableCells(lines[index + 1]);
+                    return headers.length === separators.length && separators.every(cell => /^:?-{3,}:?$/.test(cell));
+                };
                 container.replaceChildren();
                 for (let index = 0; index < lines.length;) {
                     const line = lines[index];
@@ -694,6 +723,34 @@
                         const pre = document.createElement("pre");
                         pre.append(code);
                         container.append(pre);
+                        continue;
+                    }
+                    if (isTableStart(index)) {
+                        const headers = tableCells(line), separators = tableCells(lines[index + 1]);
+                        const table = document.createElement("table"), head = document.createElement("thead"), body = document.createElement("tbody");
+                        const appendRow = (section, cells, tag) => {
+                            const row = document.createElement("tr");
+                            headers.forEach((header, column) => {
+                                const cell = document.createElement(tag);
+                                if (tag === "th") cell.scope = "col";
+                                const separator = separators[column];
+                                cell.style.textAlign = separator.endsWith(":") ? separator.startsWith(":") ? "center" : "right" : "left";
+                                appendInlineMarkdown(cell, cells[column] || "");
+                                row.append(cell);
+                            });
+                            section.append(row);
+                        };
+                        appendRow(head, headers, "th");
+                        index += 2;
+                        while (index < lines.length && lines[index].trim() && lines[index].includes("|") && !isBlockStart(lines[index])) {
+                            appendRow(body, tableCells(lines[index++]), "td");
+                        }
+                        table.append(head, body);
+                        const scroll = document.createElement("div");
+                        scroll.className = "table-scroll";
+                        scroll.tabIndex = 0;
+                        scroll.append(table);
+                        container.append(scroll);
                         continue;
                     }
                     const heading = line.match(/^(#{1,6})\s+(.+)$/);
@@ -740,7 +797,7 @@
                     }
                     const paragraph = document.createElement("p");
                     const content = [];
-                    while (index < lines.length && lines[index].trim() && !isBlockStart(lines[index])) content.push(lines[index++]);
+                    while (index < lines.length && lines[index].trim() && !isBlockStart(lines[index]) && !isTableStart(index)) content.push(lines[index++]);
                     content.forEach((item, itemIndex) => {
                         if (itemIndex) paragraph.append(document.createElement("br"));
                         appendInlineMarkdown(paragraph, item);
