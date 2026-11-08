@@ -45,7 +45,20 @@ La creation de ces artefacts n'autorise pas un push, une publication ou une oper
 - [ ] 6.3 Verifier une lecture MCP connue autorisee et une conversation progressive sur le vrai ingress ; consigner fragments visibles avant la fin, donnees comparees aux etats HA, outils effectivement appeles et absence d'appel de commande. Signaler outils manquants et limites historiques sans les contourner.
 - [ ] 6.4 Verifier reprise apres redemarrage de l'app et mise a jour compatible, configuration et isolation ; utiliser deux comptes administrateurs existants si disponibles et un compte non administrateur pour le refus, sans creation de compte implicite. Consigner les essais impossibles et conserver les criteres non prouves ouverts.
 - [ ] 6.5 Verifier les erreurs fournisseur et MCP et la relance sans fuite de secrets ni sauvegarde d'une reponse incomplete ; utiliser des simulations controlees ou une configuration de test autorisee sans interrompre HA principal, et distinguer ces preuves des pannes reelles observees.
-- [ ] 6.6 Apres accord pour chaque operation, verifier sauvegarde cold puis restauration limitees a l'app avec des donnees de test identifiables ; constater leur coherence, l'ecrasement limite a l'app et la preservation de HA/VTherm, puis consigner les limites si ces operations ne sont pas autorisees.
+- [x] 6.6 Apres accord pour chaque operation, verifier sauvegarde cold puis restauration limitees a l'app avec des donnees de test identifiables ; constater leur coherence, l'ecrasement limite a l'app et la preservation de HA/VTherm, puis consigner les limites si ces operations ne sont pas autorisees.
+
+## Cloture du 2026-11-08
+
+- L'utilisateur autorise explicitement la synchronisation de la spec principale et l'archivage avec reserves sous `openspec/changes/archive/2026-11-08-package-ha-os-app/`.
+- Le bilan reste 22 taches terminees sur 25. Les cases 6.3, 6.4 et 6.5 restent ouvertes dans l'archive : trace des outils et absence de commandes, criteres restants de configuration/isolation/acces, erreurs et relance. L'archivage ne les presente pas comme valides.
+- La sauvegarde cold et la restauration de l'app en 6.6 restent closes sur la confirmation explicite de l'utilisateur. Les preuves d'inventaire, de streaming et de reprise de conversation deja acquises ne sont pas remises en question.
+- La spec consolidee decrit le contrat attendu, pas une validation exhaustive de tous les scenarios. Aucune operation HA, sauvegarde, restauration, publication, modification de code, commit ou push n'est effectue dans cette cloture.
+
+## Preuve de reprise du 2026-11-08
+
+- L'utilisateur confirme l'arret/relance de l'app et la restauration de la conversation. Cette preuve valide le volet reprise de 6.4 ; les criteres de configuration, isolation entre deux administrateurs et refus d'un non-administrateur restent ouverts faute de confirmation specifique.
+- Apres clarification explicite, l'utilisateur confirme avoir cree une sauvegarde cold puis restaure l'app depuis celle-ci, retrouve la conversation et verifie que HA/VTherm etaient inchanges. 6.6 est close sur cette confirmation de l'essai reel, distincte de la simple reprise apres relance et sans capture technique recueillie par l'assistant.
+- Nouveau comptage : 22 sur 25 ; 6.3, 6.4 et 6.5 restent ouvertes. Aucune sauvegarde, restauration, action HA ou creation de compte n'est executee par l'assistant.
 
 ## Workflow follow-up
 

@@ -1,12 +1,14 @@
-# Spec Delta
+# vtherm-diagnosis Specification
 
 ## Purpose
 
-Expliquer le fonctionnement et les comportements des VTherm à partir des données disponibles de l'installation et de sources documentaires pertinentes.
+Expliquer le fonctionnement et les comportements des VTherm à partir des états actuels accessibles de l'installation et de leurs dépendances pertinentes.
 
 Les scénarios sont des exemples représentatifs et ne limitent pas les diagnostics ou questions couverts par les exigences.
 
-## ADDED Requirements
+L'accès à l'historique Home Assistant et la recherche documentaire pour un diagnostic sont retirés du périmètre courant le 2026-11-08, à la demande de l'utilisateur. Leur intégration et leur validation sont reportées au change suivant ; ce report ne supprime ni les horodatages ni la sauvegarde de la conversation.
+
+## Requirements
 
 ### Requirement: Diagnostic contextualisé
 Le système MUST examiner les informations disponibles et pertinentes pour répondre à la question de l'utilisateur sur le fonctionnement ou le comportement du VTherm concerné.
@@ -26,17 +28,6 @@ Le système MUST prendre en compte, lorsque leurs données sont accessibles et p
 - **WHEN** l'inhibition est visible mais que sa règle ou les états nécessaires ne sont pas accessibles
 - **THEN** l'assistant indique cette limite et ne prétend pas connaître la condition de déclenchement
 
-### Requirement: Historique disponible
-Le système MUST pouvoir utiliser l'historique déjà disponible et accessible pour répondre aux questions sur le passé, sans modifier la durée de conservation de Recorder.
-
-#### Scenario: Événement enregistré
-- **WHEN** l'utilisateur demande quand une entité pertinente a changé d'état et que cet événement est disponible dans l'historique
-- **THEN** l'assistant utilise cette donnée en précisant la période concernée
-
-#### Scenario: Historique insuffisant
-- **WHEN** la période ou les attributs nécessaires ne sont pas enregistrés ou sont inaccessibles
-- **THEN** l'assistant indique ce qui manque et ne reconstruit pas les valeurs passées à partir des valeurs actuelles
-
 ### Requirement: Conclusions étayées
 Le système MUST distinguer les faits observés, les hypothèses et les informations manquantes, sans présenter une corrélation ou une valeur isolée comme une cause démontrée.
 
@@ -44,28 +35,12 @@ Le système MUST distinguer les faits observés, les hypothèses et les informat
 - **WHEN** la température de consigne n'est pas atteinte et que la puissance indiquée est de 50 pour cent
 - **THEN** l'assistant ne conclut pas sur cette seule base que la puissance est la cause du froid
 
-### Requirement: Conseils et documentation
-Le système MUST proposer des pistes compatibles avec les informations vérifiées et fournir des liens documentaires pertinents lorsqu'il recommande une procédure ou un plugin.
+### Requirement: Conseils contextualisés
+Le système MUST proposer des pistes compatibles avec les informations vérifiées et préciser leurs limites, sans prétendre avoir consulté une source documentaire absente des preuves disponibles ni installer ou configurer un plugin.
 
 #### Scenario: Réglage ou plugin proposé
 - **WHEN** l'utilisateur demande comment améliorer le chauffage
 - **THEN** l'assistant présente les options étayées et leurs limites, sans inventer une valeur de coefficient ni supposer la compatibilité d'un plugin
-
-#### Scenario: Installation demandée
-- **WHEN** l'utilisateur choisit d'étudier un plugin compatible
-- **THEN** l'assistant fournit un lien vers sa documentation d'installation sans installer ni configurer le plugin
-
-### Requirement: Recherche documentaire pour un diagnostic
-Lors d'une recherche de panne ou d'incident, le système MUST rechercher une solution ou une procédure dans la documentation officielle de Versatile Thermostat, dans la langue utilisée par l'utilisateur parmi le français, l'anglais et l'allemand. Il MUST citer les pages consultées et distinguer leurs conseils des faits observés dans l'installation.
-
-#### Scenario: Recherche de panne ou d'incident
-- **WHEN** l'utilisateur demande de diagnostiquer une panne ou un incident VTherm
-- **THEN** l'assistant recherche une solution ou une procédure dans la documentation officielle correspondant à la langue de l'utilisateur et fournit les liens des pages pertinentes
-- **AND** il présente les recommandations documentaires séparément des faits observés sur l'installation
-
-#### Scenario: Documentation sans résultat ou inaccessible
-- **WHEN** aucune page pertinente n'est trouvée ou que la documentation ne peut pas être consultée
-- **THEN** l'assistant signale cette limite, n'invente pas de solution documentaire et poursuit uniquement avec les informations disponibles
 
 ### Requirement: Données indisponibles
 Le système MUST indiquer les informations manquantes ou inaccessibles lorsqu'elles empêchent un diagnostic fiable et proposer une vérification complémentaire lorsqu'elle est possible.

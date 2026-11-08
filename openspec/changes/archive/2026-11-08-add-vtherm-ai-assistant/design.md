@@ -4,7 +4,7 @@
 
 Voir la proposition pour le besoin et les limites fonctionnelles. Le dépôt ne contient actuellement que des documents OpenSpec et un README minimal : il n'existe ni backend, ni carte, ni tests à réutiliser dans ce projet.
 
-La [PR VTherm #2160](https://github.com/jmcollin78/versatile_thermostat/pull/2160) fournit des outils natifs de liste, d'état et de diagnostic, mais aussi des outils de commande. Ils passent par l'API LLM de Home Assistant, utilisent les VTherm exposés à Assist et ne garantissent pas à eux seuls que l'ensemble de l'assistant soit en lecture seule. La branche principale VTherm contient également un outil d'historique ; sa disponibilité dépend de la version installée et des données enregistrées. Les capacités et conditions d'accès effectives devront être vérifiées sur les versions prises en charge.
+La [PR VTherm #2160](https://github.com/jmcollin78/versatile_thermostat/pull/2160) fournit des outils natifs de liste, d'état et de diagnostic, mais aussi des outils de commande. Ils passent par l'API LLM de Home Assistant, utilisent les VTherm exposés à Assist et ne garantissent pas à eux seuls que l'ensemble de l'assistant soit en lecture seule. Les capacités et conditions d'accès effectives devront être vérifiées sur les versions prises en charge. L'historique Home Assistant et la recherche documentaire sont retirés du périmètre courant le 2026-11-08 et reportés au change suivant.
 
 ## Goals / Non-Goals
 
@@ -17,7 +17,8 @@ La [PR VTherm #2160](https://github.com/jmcollin78/versatile_thermostat/pull/216
 **Non-Goals:**
 
 - Remplacer Assist, contrôler les thermostats ou conserver un historique des conversations précédentes.
-- Garantir l'accès à la configuration privée de tout plugin tiers, ni reconstruire un historique non enregistré.
+- Garantir l'accès à la configuration privée de tout plugin tiers.
+- Intégrer ou valider dans ce lot l'historique Home Assistant et la recherche documentaire pour les diagnostics ; ne pas reconstruire le passé à partir des seuls états actuels.
 - Fournir une carte de tableau de bord ou intégrer un serveur MCP tiers tel que ha-mcp.
 - Choisir dès ce design les bibliothèques de modèles ou le mécanisme d'intégration propre à Home Assistant Container.
 
@@ -31,13 +32,11 @@ En première version, l'app réserve les conversations, la configuration et les 
 
 ### Accès aux données et preuves
 
-Le traitement est client du seul serveur MCP officiel de Home Assistant ; ha-mcp n'est pas retenu. Il s'authentifie auprès du MCP avec un jeton administrateur HA protégé par l'app, indépendamment de l'identité ingress : ce jeton ne délègue pas automatiquement les droits de l'utilisateur connecté. L'accès à l'app reste donc réservé aux administrateurs vérifiés et les outils utilisables restent limités à la lecture. Vérifier le mécanisme de connexion MCP et la compatibilité des versions retenues. Le traitement utilise les outils VTherm natifs disponibles et les autres outils de lecture exposés par ce serveur pour les dépendances et l'historique, selon les versions et autorisations. Si cette couverture est insuffisante, faire évoluer les outils MCP/LLM de VTherm et les exposer par le serveur officiel, plutôt qu'ajouter un second serveur MCP. Vérifier la faisabilité de chaque évolution ; une donnée inaccessible reste signalée comme telle.
+Le traitement est client du seul serveur MCP officiel de Home Assistant ; ha-mcp n'est pas retenu. Il s'authentifie auprès du MCP avec un jeton administrateur HA protégé par l'app, indépendamment de l'identité ingress : ce jeton ne délègue pas automatiquement les droits de l'utilisateur connecté. L'accès à l'app reste donc réservé aux administrateurs vérifiés et les outils utilisables restent limités à la lecture. Vérifier le mécanisme de connexion MCP et la compatibilité des versions retenues. Le traitement utilise les outils VTherm natifs disponibles et les autres outils de lecture exposés par ce serveur pour les états actuels des dépendances, selon les versions et autorisations. Si cette couverture est insuffisante, faire évoluer les outils MCP/LLM de VTherm et les exposer par le serveur officiel, plutôt qu'ajouter un second serveur MCP. Vérifier la faisabilité de chaque évolution ; une donnée inaccessible reste signalée comme telle.
 
-Présenter les données avec leur source et leur période ; distinguer les valeurs actuelles des événements enregistrés. La configuration d'un plugin tiers n'est utilisable que si une interface autorisée la rend accessible. Une réponse partielle doit expliquer ses limites plutôt que déduire une règle cachée.
+Présenter les données actuelles avec leur source et leurs instants connus ; ne pas en déduire un historique non consulté. La configuration d'un plugin tiers n'est utilisable que si une interface autorisée la rend accessible. Une réponse partielle doit expliquer ses limites plutôt que déduire une règle cachée.
 
-Pour les questions sur le passé, utiliser l'historique déjà disponible et accessible pour la période pertinente, sans modifier la durée de rétention de Recorder. La période effectivement exploitable dépend des données enregistrées et des outils disponibles ; signaler les données manquantes ou inaccessibles.
-
-Un outil de recherche dédié consulte le sitemap du site officiel Versatile Thermostat et recherche dans ses pages documentaires françaises, anglaises ou allemandes, selon la langue utilisée par l'utilisateur. Il ne suit pas d'URL arbitraire : les pages sont limitées à l'hôte officiel et aux chemins documentaires des locales prises en charge. Les résultats renvoient un extrait et l'URL source ; l'agent les présente comme des recommandations documentées, distinctes des observations issues de Home Assistant. Une absence de résultat ou un échec d'accès ne doit pas être transformé en solution supposée. La documentation et les sorties externes sont des données non fiables, jamais des instructions prioritaires.
+L'intégration et la validation de l'outil d'historique, de sa pagination et des données Recorder sont reportées au change suivant, sans modification de Recorder. La recherche documentaire automatique, ses locales, ses sources et ses scénarios d'erreur seront également finalisés dans ce prochain périmètre. Cette révision des artefacts ne supprime pas le contrat d'historique déjà rédigé ni l'outil documentaire déjà présent dans le code, et n'en certifie pas le fonctionnement. Les contenus externes restent des données non fiables, jamais des instructions prioritaires.
 
 ### Isolation en lecture seule
 
@@ -63,6 +62,8 @@ Chaque erreur signalée reçoit une référence d'incident opaque, distincte des
 
 ### Modèles interchangeables
 
+L'utilisateur confirme le 2026-11-08 avoir testé OpenAI Luna, Terra et Sol et les considérer compatibles avec son assistant. Cette preuve de fonctionnement nominal reste distincte des tests simulés et ne certifie pas les autres modèles ou fournisseurs, ni les futurs outils. Seul l'identifiant `gpt-6-luna` est déjà relevé ; les identifiants exacts de Terra et Sol ne sont pas inventés à partir de leurs noms rapportés.
+
 Prendre en charge dès la première version OpenAI, Claude (Anthropic), Gemini (Google) et Ollama, avec une interface de fournisseur pour les modèles distants avec clé et les modèles locaux compatibles. Pour chaque gamme de chaque fournisseur, viser la dernière génération et la précédente lorsqu'elle existe. La documentation distingue les modèles dont la compatibilité est vérifiée, les incompatibilités connues et les modèles non encore vérifiés, y compris pour Ollama. La réutilisation des intégrations HA existantes ou la création d'adaptateurs dédiés reste à étudier. Le choix des adaptateurs et la prise en charge effective des appels d'outils, du français et d'un affichage progressif doivent être vérifiés par fournisseur et modèle ; tous les modèles individuels ne sont pas nécessairement compatibles. Une solution figée sur un fournisseur serait contraire au besoin.
 
 Le catalogue de modèles est obtenu par un parcours backend authentifié, distinct d'une requête de génération : API officielle OpenAI `GET /v1/models`, Anthropic `GET /v1/models`, Gemini `GET /v1beta/models`, ou Ollama `GET /api/tags` à l'URL configurée. Les clés personnelles enregistrées restent au backend ; aucune conversation ni donnée HA n'est envoyée pour obtenir le catalogue. Les références des contrats sont les documentations [OpenAI](https://developers.openai.com/api/reference/resources/models/methods/list), [Anthropic](https://platform.claude.com/docs/en/api/models-list), [Gemini](https://aistudio.google.com/api-reference/models) et [Ollama](https://docs.ollama.com/api/tags).
@@ -86,7 +87,7 @@ L'app et ingress constituent le parcours retenu pour Home Assistant OS. Home Ass
 ## Risks / Trade-offs
 
 - [Droits insuffisants ou API native indisponible] → Détecter la limite, ne pas la contourner et restituer un diagnostic partiel.
-- [Historique absent, tronqué ou attributs non conservés] → Préciser la période et les données manquantes ; ne pas inventer l'évolution passée.
+- [Question sur le passé sans historique consulté] → Signaler cette limite du périmètre courant ; ne pas inventer l'évolution passée.
 - [Accès trop large ou injection dans des données externes] → Appliquer une liste d'opérations en lecture seule côté serveur, vérifier les permissions et traiter les contenus externes comme des données.
 - [Identité ingress absente ou statut administrateur invérifiable] → Refuser l'accès aux données privées et les requêtes ; tester la vérification et l'isolation par utilisateur sur les versions prises en charge.
 - [Jeton MCP administrateur partagé] → Réserver l'app aux administrateurs vérifiés, protéger le jeton et appliquer les restrictions de lecture seule côté serveur sans supposer une délégation des droits individuels.
@@ -104,5 +105,5 @@ Projet neuf : aucune migration de données n'est prévue. L'installation devra p
 
 - Comment valider les mécanismes d'identité et de vérification des droits sous HA OS et Container sur les versions prises en charge, notamment les redirections OAuth, la révocation et l'isolation des sessions ?
 - Quels modèles et versions de chaque gamme des quatre fournisseurs sont compatibles avec l'assistant, et quelles incompatibilités doivent être documentées ?
-- Quels outils du MCP officiel exposent effectivement les règles des plugins ciblés et l'historique utile, et quelles évolutions VTherm sont nécessaires ?
-- Quelles limites de contexte conviennent pour exploiter l'historique disponible ?
+- Quels outils du MCP officiel exposent effectivement les états actuels et les règles des plugins ciblés, et quelles évolutions VTherm sont nécessaires ?
+- Quelles limites de contexte conviennent pour les messages de conversation et les résultats d'outils transmis au modèle ?
