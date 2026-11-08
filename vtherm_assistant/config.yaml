@@ -1,5 +1,5 @@
 name: Assistant VTherm
-version: "0.1.1"
+version: "0.1.2"
 slug: vtherm_assistant
 description: Assistant de diagnostic VTherm en lecture seule
 url: https://github.com/jmcollin78/vtherm_assistant

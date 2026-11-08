@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 - Conversations et modeles, 2026-11-08
+
+- Catalogue dynamique des modeles par fournisseur, avec suggestions de secours identifiees et saisie manuelle conservee.
+- Date et heure avant les auteurs, dans la langue et le fuseau du navigateur ; instants conserves lors de la reprise.
+- Inventaire initial des VTherm accessibles via MCP, sans generation par le modele ; conservation sans doublon, erreurs et relance.
+- Rendu securise des tableaux Markdown avec defilement horizontal.
+- Lecture seule, jetons personnels, droits et exposition Assist inchanges ; validation des nouveaux parcours sur HA OS reel encore a effectuer.
+
 ## 0.1.1 - Correctif MCP, 2026-11-08
 
 - Accepte les trois outils de lecture VTherm avec le prefixe `assist__` lorsque HA fusionne plusieurs API LLM.
