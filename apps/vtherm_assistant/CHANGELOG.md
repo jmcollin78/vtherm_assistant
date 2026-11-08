@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0 - Dynamic VTherm Tools, 2026-11-08
+
+- Discover accepted VTherm MCP tools dynamically, including newly published read and write tools.
+- Expand diagnostics with plugin status, thermostat history, technical logs, linked entity states, and official VTherm documentation when available.
+- Require a separate UI approval for every VTherm write, showing its target and arguments; generic Home Assistant writes remain unavailable.
+
 ## 0.1.2 - Conversations and Models, 2026-11-08
 
 - Dynamic per-provider model catalogs, identified fallback suggestions, and

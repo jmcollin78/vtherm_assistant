@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0 - Outils VTherm dynamiques, 2026-11-08
+
+- Decouverte dynamique des outils MCP VTherm acceptes, y compris les nouveaux outils de lecture et d'ecriture publies.
+- Diagnostics enrichis : etat des plugins, historique du thermostat, journaux techniques, etats des entites liees et documentation officielle VTherm lorsque disponibles.
+- Approbation distincte dans l'interface avant chaque ecriture VTherm, avec affichage de la cible et des parametres ; les ecritures Home Assistant generiques restent indisponibles.
+
 ## 0.1.2 - Conversations et modeles, 2026-11-08
 
 - Catalogue dynamique des modeles par fournisseur, avec suggestions de secours identifiees et saisie manuelle conservee.
