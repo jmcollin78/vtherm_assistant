@@ -9,7 +9,7 @@ import time
 import tomllib
 import uuid
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 import yaml
@@ -184,16 +184,53 @@ def wait_for_server(container):
 
     reader = threading.Thread(target=collect, daemon=True)
     reader.start()
+    deadline = time.monotonic() + 120
     try:
-        while True:
-            line = lines.get(timeout=30)
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                line = lines.get(timeout=remaining)
+            except queue.Empty:
+                break
             assert line is not None, "Container exited before server startup"
             if "Uvicorn running on http://0.0.0.0:8099" in line:
                 return
+        pytest.fail("Container did not start within 120 seconds")
     finally:
         process.terminate()
         process.wait(timeout=10)
         reader.join(timeout=10)
+
+
+def test_wait_for_server_uses_one_startup_deadline():
+    lines = Mock()
+    lines.get.side_effect = ["Initializing application\n", "Uvicorn running on http://0.0.0.0:8099\n"]
+    process = Mock()
+    reader = Mock()
+    with patch("queue.Queue", return_value=lines), \
+         patch("subprocess.Popen", return_value=process), \
+         patch("threading.Thread", return_value=reader), \
+         patch("time.monotonic", side_effect=[100, 145, 165]):
+        wait_for_server("vtherm-test-startup")
+    assert lines.get.call_args_list == [call(timeout=75), call(timeout=55)]
+    process.terminate.assert_called_once_with()
+    process.wait.assert_called_once_with(timeout=10)
+    reader.join.assert_called_once_with(timeout=10)
+
+
+def test_wait_for_server_reports_startup_timeout():
+    lines = Mock()
+    lines.get.side_effect = queue.Empty
+    process = Mock()
+    reader = Mock()
+    with patch("queue.Queue", return_value=lines), \
+         patch("subprocess.Popen", return_value=process), \
+         patch("threading.Thread", return_value=reader), \
+         patch("time.monotonic", side_effect=[100, 110]):
+        with pytest.raises(pytest.fail.Exception, match="Container did not start within 120 seconds"):
+            wait_for_server("vtherm-test-timeout")
+    process.terminate.assert_called_once_with()
+    process.wait.assert_called_once_with(timeout=10)
+    reader.join.assert_called_once_with(timeout=10)
 
 
 def test_image_dependencies_and_resources(image, manifest):
