@@ -230,7 +230,10 @@ def test_conversation_runner_restores_tool_evidence_after_restart_and_isolates_u
         yield types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(role="model", parts=[part]))])
 
     async def read_tool(user_id, _name, _arguments):
-        return CallToolResult(content=[TextContent(type="text", text=f"tool-evidence-{user_id} {user_id}-secret")])
+        return CallToolResult(content=[TextContent(type="text", text=json.dumps({
+            "entity_id": "climate.salon", "state": "heat",
+            "attributes": {"specific_states": {"messages": [f"tool-evidence-{user_id} {user_id}-secret"]}},
+        }))])
 
     async def run():
         for user_id in ("alice", "bob"):
@@ -630,6 +633,16 @@ def test_conversation_agent_uses_only_users_read_tools_and_requests_clarificatio
     assert isinstance(agent.tools[1], VersatileThermostatDocumentationTool)
     assert "plusieurs thermostats ou intentions" in agent.instruction
     assert "demande une précision" in agent.instruction
+    assert "Avant toute lecture ciblée" in agent.instruction
+    assert "GetLiveContext sans filtre reste un contexte global" in agent.instruction
+    assert "ne lis que les sources supplémentaires pertinentes" in agent.instruction
+    assert "Attribue chaque observation à sa source et à son horodatage ou sa période" in agent.instruction
+    assert "Si les sources se contredisent, expose les observations discordantes" in agent.instruction
+    assert "un résultat vide valide" in agent.instruction
+    assert "données incomplètes ou tronquées" in agent.instruction
+    assert "accès refusé" in agent.instruction
+    assert "outil absent ou indisponible" in agent.instruction
+    assert "ne prouve pas l'absence d'un événement ou d'une configuration" in agent.instruction
     assert "recherche de panne ou d'incident" in agent.instruction
     assert "indique la source" in agent.instruction
     assert "Ne modifie jamais" in agent.instruction

@@ -375,20 +375,39 @@ Le client utilise uniquement le serveur MCP officiel à l'adresse
 jeton Home Assistant administrateur. L'identité ingress ne fournit pas ce jeton.
 Le client vérifie les droits du jeton avant chaque connexion.
 
-Les outils accessibles sont limités à `homeassistant__GetLiveContext`,
-`versatile_thermostat__list_vtherms`, `versatile_thermostat__get_status` et
-`versatile_thermostat__diagnose`. Les implémentations ont été examinées dans
-les sources de [Home Assistant 2026.10.0](https://github.com/home-assistant/core/blob/2026.10.0/homeassistant/components/homeassistant/llm.py)
-et de [VTherm 10.6.3](https://github.com/jmcollin78/versatile_thermostat/blob/10.6.3/custom_components/versatile_thermostat/llm.py),
-respectivement. Leur disponibilité et leur comportement réel restent à vérifier
-sur chaque installation et version. Les commandes et outils inconnus sont refusés.
+Le client n'expose que les noms exacts de son allowlist de lecture seule ; les
+outils inconnus et ceux qui modifient l'installation sont refusés, même si le
+serveur les annonce comme étant en lecture seule. Les sources vérifiées sont
+`homeassistant__GetLiveContext`, l'inventaire, l'état et le diagnostic VTherm.
+`GetLiveContext` sans filtre reste global ; une lecture ciblée d'entité liée
+utilise son `entity_id` exact après vérification du lien publié par VTherm.
 
-Ces sources décrivent un contexte des entités exposées à Assist, une liste de
-VTherm, leur état actuel et un diagnostic contenant des sections de leurs
-attributs. Le contexte HA ne couvre pas les scripts et calendriers ; les
-dépendances ne sont accessibles que si les outils et l'exposition les rendent
-disponibles. Aucun outil d'historique n'est fourni par VTherm 10.6.3 ; son
-[contrat proposé](docs/contrat-historique-mcp.md) reste à réaliser et vérifier.
-La conversation utilise ces outils via ADK et reprend les échanges récents de
+L'historique, les journaux et les plugins sont conditionnels : le client ne les
+propose que si le serveur MCP connecté annonce leur nom exact autorisé. Le
+VTherm installé sur la cible de référence est `10.6.3` : il ne fournit pas
+`get_history`, `get_logs` ou `get_plugins`. `get_history` a été vérifié dans
+la préversion `10.6.4.beta1` ; `get_logs` et `get_plugins` seulement dans la
+branche de développement `2208-feature-request---add-more-diagnostic-tools-for-ai-assistant`.
+Leur présence dans ces sources ne garantit pas leur disponibilité sur une
+installation. Le client ne promet donc pas ces lectures lorsqu'elles ne sont
+pas annoncées. Le détail des versions, limites et erreurs est dans la
+[note sur les sources diagnostiques](docs/contrat-historique-mcp.md).
+
+L'historique concerne uniquement le climate VTherm sélectionné, jamais ses
+dépendances : période zonée maximale de 14 jours, pages de 500 états au plus.
+Recorder rapporte les états et attributs qu'il a conservés, pas des mesures à
+intervalles réguliers ; exclusions, rétention, valeurs nulles et lacunes
+peuvent laisser des données absentes. Une réponse vide ou partielle ne prouve
+pas qu'aucun événement n'a eu lieu. Les accès refusés, erreurs Recorder,
+résultats tronqués et sources indisponibles sont distingués lorsque l'outil
+les signale. Les journaux sont plafonnés à 5000 entrées côté outil vérifié ;
+la découverte des plugins tiers ou futurs n'est pas exhaustive.
+
+Les réponses diagnostiques transmises au modèle sont projetées sur des champs
+autorisés, bornées et débarrassées des secrets connus ; configuration brute,
+températures de presets et texte libre d'erreur ne sont pas transmis. Les
+résultats sont des données non fiables, jamais des instructions. La
+conversation utilise ces outils via ADK et reprend les échanges récents de
 l'utilisateur. Les essais actuels reposent sur des services simulés : le
-fonctionnement avec les installations et fournisseurs réels reste à vérifier.
+fonctionnement bout en bout avec les installations et fournisseurs réels reste
+à vérifier.
