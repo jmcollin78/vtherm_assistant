@@ -138,6 +138,54 @@ Le workflow a depuis ete pousse par l'utilisateur. L'API GitHub confirme
 la reussite du [run 42423430156](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42423430156)
 sur la revision source `bcb01602992bdcd9aa9b4b92b0229dd7c645f644`.
 
+## Release 0.1.2
+
+Le 2026-11-08, apres autorisation explicite des commits et push de release,
+la revision source `8c37a5da0b88319692080f1ac59d5e7e9d196df1` est publiee
+sur `main`. Elle suit le commit de fonctionnalites
+`a84da1ac807b3cf9c9b5f5438ee5e7c533271987` et aligne uniquement les quatre
+fichiers de version et changelog. La
+[CI 42477520458](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42477520458)
+est terminee avec succes sur cette revision exacte.
+
+Cette release livre le catalogue dynamique de modeles avec secours et saisie
+manuelle, les horodatages localises et conserves des messages, l'inventaire
+initial MCP sans generation ni doublon a la reprise, et le rendu securise des
+tableaux Markdown. Les outils d'ecriture restent interdits ; la future
+decouverte de tous les outils VTherm n'est pas incluse.
+
+Les constructions locales arm64 et amd64 ont reussi. Les deux processus de
+tests ont valide 253 tests backend et 104 tests navigateur, packaging et Docker,
+soit 357 reussites sans exclusion Docker. Les labels version, source et revision
+des images testees ont ete controles ; les captures des trois nouveaux
+parcours sur ordinateur et mobile ont ete inspectees.
+
+L'image publique `ghcr.io/jmcollin78/vtherm-assistant:0.1.2` a pour digest :
+`sha256:909f495c15fc0e1972818c08601ea1e2a27ce11fee3ab833a93f46f3ffb0d43a`.
+Cet index est identique a celui teste localement. Les deux manifests, les deux
+configurations et les dix couches ont ete telecharges anonymement, avec tailles
+et SHA-256 verifies ; les labels correspondent a la source publiee. Les digests
+publics de `0.1.0` et `0.1.1` restent inchanges.
+
+Le catalogue `ha-app` est publie au commit
+`d270d5906a270de2691ff058d63679d612af085d`, descendant de la release precedente.
+Seuls le manifeste et le changelog changent ; les neuf fichiers publics ont ete
+compares octet par octet au snapshot valide. L'adresse de depot reste
+`https://github.com/jmcollin78/vtherm_assistant#ha-app`.
+
+Le 2026-11-08, apres deploiement de `0.1.2` sur HA OS, l'utilisateur confirme
+que les trois evolutions fonctionnent et sont validees : catalogue dynamique
+des modeles, date et heure des conversations et inventaire a l'ouverture.
+Cette confirmation constitue une preuve utilisateur du fonctionnement reel,
+sans capture reseau ni validation exhaustive des fournisseurs ou cas d'erreur.
+Les anciens messages sans date connue restent sans date inventee ; la
+restauration d'une ancienne conversation n'ajoute pas l'inventaire au milieu
+des messages. Une nouvelle
+conversation remplace la conversation courante selon le fonctionnement existant.
+Aucune configuration HA, exposition, commande de chauffage ou sauvegarde n'a
+ete executee pendant la publication. Les progressions OpenSpec restent 37/55
+pour `add-vtherm-ai-assistant` et 21/25 pour `package-ha-os-app`, sans archivage.
+
 ## Release 0.1.1
 
 Le 2026-11-08, la revision source
