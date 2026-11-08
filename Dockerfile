@@ -14,7 +14,7 @@ RUN python -m pip install --no-cache-dir --no-compile \
     && dpkg-query -W > /usr/local/share/vtherm-assistant/debian.txt
 
 FROM ${PYTHON_BASE}
-LABEL org.opencontainers.image.version="0.1.1" \
+LABEL org.opencontainers.image.version="0.1.2" \
     org.opencontainers.image.source="https://github.com/jmcollin78/vtherm_assistant"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
