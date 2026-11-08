@@ -14,5 +14,7 @@ https://localhost:8443 {
 
 https://localhost:8444 {
 	tls internal
-	reverse_proxy 127.0.0.1:8123
+	reverse_proxy 127.0.0.1:8123 {
+		header_up -X-Forwarded-For
+	}
 }
