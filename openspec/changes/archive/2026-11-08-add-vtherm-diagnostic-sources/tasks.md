@@ -21,4 +21,4 @@
 ## 4. Valider l'intégration réelle
 
 - [x] 4.1 Vérifier de bout en bout sur les versions HA/VTherm prises en charge le contexte global `GetLiveContext`, l'historique du seul climate et les outils de plugins/journaux pour un VTherm ; consigner permissions, périodes et limites réelles.
-- [ ] 4.2 Vérifier de bout en bout le refus des outils d'écriture, l'isolation des données par utilisateur et par VTherm, le masquage des secrets et l'affichage d'un diagnostic limité lorsque des sources manquent ; confirmer qu'aucun état HA ou VTherm n'est modifié.
+- [x] 4.2 Vérifier de bout en bout le refus des outils d'écriture, l'isolation des données par utilisateur et par VTherm, le masquage des secrets et l'affichage d'un diagnostic limité lorsque des sources manquent ; confirmer qu'aucun état HA ou VTherm n'est modifié.
