@@ -1,23 +1,30 @@
-# Assistant VTherm
+# VTherm Assistant
 
 ![VTherm](logo.png)
 
-App experimentale pour Home Assistant OS, integree par ingress et reservee
-aux administrateurs. Elle utilise les outils MCP de lecture autorises pour
-les diagnostics VTherm. Aucun port hote ni carte de tableau de bord a ajouter.
+A conversational assistant for diagnosing Versatile Thermostat in Home
+Assistant OS. It discovers all VTherm tools published by the MCP server whose
+schemas it accepts, and can analyze the states, history, and other diagnostics
+they provide.
 
-Catalogue experimental :
+It can also search the official online VTherm documentation at
+[versatile-thermostat.org](https://www.versatile-thermostat.org/) in French,
+English, or German. Search returns targeted excerpts, not a complete copy of
+the site.
+
+Published VTherm actions (for example mode, target temperature, preset, or
+on/off) each require explicit approval of the target and every argument in the
+UI. Always verify in Home Assistant what actually changed. Availability depends
+on VTherm, the MCP tools published and accepted, and the selected entity;
+generic Home Assistant write commands are not available.
+
+**Never enter secrets in conversations.** Messages and results used to answer
+are sent to the configured model provider. Enter API keys and the Home
+Assistant token only in their dedicated fields.
+
+App repository:
 `https://github.com/jmcollin78/vtherm_assistant#ha-app`
 
-L'image GHCR `0.1.0` est publique pour aarch64 et amd64 ; les telechargements
-anonymes des deux architectures sont verifies. Le chargement du catalogue
-par un vrai Supervisor et l'installation restent a verifier apres accord.
-Ne pas ajouter le depot source brut comme catalogue : il contient aussi des
-fichiers OpenSpec que Supervisor pourrait interpreter comme une autre app.
-
-Voir [DOCS](DOCS.md) pour les prerequisites, l'installation, la configuration,
-les donnees privees, sauvegardes et restaurations limitees a cette app.
-
-Cibles a verifier : HA 2026.10 et VTherm 10.6.3. Seules les constructions
-Linux aarch64/amd64 et les regressions locales sont actuellement testees ;
-aucune compatibilite reelle HA OS n'est encore certifiee.
+See [DOCS](DOCS.md) for installation, MCP configuration, long-lived tokens,
+model selection, conversation recovery, backups, and restores. French version:
+[README-fr](README-fr.md).
