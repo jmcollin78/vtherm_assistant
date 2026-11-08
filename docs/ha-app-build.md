@@ -138,6 +138,54 @@ Le workflow a depuis ete pousse par l'utilisateur. L'API GitHub confirme
 la reussite du [run 42423430156](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42423430156)
 sur la revision source `bcb01602992bdcd9aa9b4b92b0229dd7c645f644`.
 
+## Release 0.1.1
+
+Le 2026-11-08, la revision source
+`93bddd921656a5a02c4c94d20cf2a5b18a7d0252` a ete validee par la
+[CI 42464546539](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42464546539).
+Le helper de test attend maintenant le demarrage pendant au plus 120 secondes
+au total, sans renouveler ce delai a chaque ligne de log ; la limite SIGTERM
+reste de 10 secondes.
+
+Cette release accepte les trois outils de lecture VTherm avec ou sans le
+prefixe `assist__`. HA conserve les noms bruts lorsqu'une seule API LLM est
+exposee et ajoute un espace de noms lorsqu'il fusionne plusieurs API.
+Les commandes d'ecriture restent interdites et les schemas restent locaux.
+
+L'image publique `ghcr.io/jmcollin78/vtherm-assistant:0.1.1` a pour digest :
+`sha256:50806a00247a57e865dab6597702adb8708ec8171554a58be898caf3fc10d9a6`.
+Les 12 tests Docker des images exactes arm64 et amd64 ont reussi avant
+publication. L'index publie correspond a l'index teste ; les deux configurations
+et les dix couches ont ete telechargees anonymement, avec tailles et SHA-256
+verifies. Les labels version, source et revision correspondent a cette release.
+Le digest public de `0.1.0` est inchange.
+
+Le catalogue `ha-app` est publie au commit
+`6e3d983e89f710d1bc1433c8fb32ad8409018719`, en conservant son historique.
+Les neuf fichiers publics ont ete compares octet par octet au catalogue valide ;
+seuls le manifeste de version et le changelog ont change. La mise a jour de
+l'app et la lecture MCP reelle sur HA OS restent a verifier ; aucune
+configuration HA n'a ete modifiee pendant cette publication.
+
+### Etat de reprise au 2026-11-08
+
+- Source : branche `main`, commit `93bddd921656a5a02c4c94d20cf2a5b18a7d0252`,
+	synchronisee avec `origin/main`. Seul ce document reste modifie localement
+	et non commite apres publication.
+- Change `package-ha-os-app` : 21/25 taches terminees. Les taches 6.3 a 6.6
+	restent ouvertes ; aucun archivage ni synchronisation des specs effectue.
+- HA OS : installation `0.1.0`, sidebar et controle administrateur ingress
+	confirmes. La mise a jour en `0.1.1` n'est pas encore confirmee.
+- L'utilisateur confirme une vraie liste et un diagnostic dans l'app locale.
+	Sur HA OS, `Expose all LLM APIs` est active ; la lecture MCP avec le correctif
+	reste a verifier, ainsi que les fragments progressifs compares aux etats HA.
+- Prochaine action : actualiser le catalogue dans HA, mettre uniquement l'app
+	a jour en `0.1.1`, puis demander liste et diagnostic en lecture seule.
+	Verifier aussi la conservation de la configuration et de la conversation.
+- Ne pas ecraser les tags publics `0.1.0` ou `0.1.1`, modifier le chauffage,
+	l'exposition globale ou HA/VTherm. Sauvegarde cold et restauration de l'app
+	exigent chacune un accord distinct. Aucun jeton ne doit etre transmis en chat.
+
 ## Release 0.1.0
 
 Le 2026-11-08, apres accord explicite, l'image
