@@ -1,6 +1,8 @@
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -167,6 +169,45 @@ class HomeAssistantMCP:
 
     async def tools_for(self, user_id: str, additional_secrets: tuple[str, ...] = ()) -> list[ReadOnlyMCPTool]:
         return [ReadOnlyMCPTool(self, user_id, tool, additional_secrets) for tool in await self.list_read_only_tools(user_id)]
+
+    async def inventory_for(self, user_id: str) -> dict[str, Any]:
+        if not self.secrets.get(user_id, "home_assistant"):
+            raise MCPConnectionError("Jeton Home Assistant manquant")
+        tools = await self.list_read_only_tools(user_id)
+        candidates = [tool.name for tool in tools if tool.name in {
+            "versatile_thermostat__list_vtherms", "assist__versatile_thermostat__list_vtherms",
+        }]
+        if len(candidates) != 1:
+            raise MCPToolDenied("Outil de liste VTherm absent ou ambigu")
+        result = await self.call_read_only_tool(user_id, candidates[0], {})
+        if result.isError:
+            raise MCPConnectionError("La lecture de l'inventaire VTherm a échoué")
+        payload = result.structuredContent
+        if payload is None:
+            try:
+                texts = [content.text for content in result.content if content.type == "text"]
+                payload = json.loads("".join(texts))
+            except (ValueError, TypeError):
+                raise MCPConnectionError("Inventaire VTherm invalide") from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("thermostats"), list):
+            raise MCPConnectionError("Inventaire VTherm invalide")
+        if type(payload.get("count")) is not int or payload["count"] != len(payload["thermostats"]):
+            raise MCPConnectionError("Compte de l'inventaire VTherm incohérent")
+        thermostats = []
+        seen = set()
+        for entry in payload["thermostats"]:
+            if not isinstance(entry, dict):
+                raise MCPConnectionError("Inventaire VTherm invalide")
+            entity_id = entry.get("entity_id")
+            name = entry.get("name") or entry.get("friendly_name") or entity_id
+            if not isinstance(entity_id, str) or not entity_id.startswith("climate.") or entity_id in seen or not isinstance(name, str):
+                raise MCPConnectionError("Entité de l'inventaire VTherm invalide")
+            seen.add(entity_id)
+            thermostats.append({"entity_id": entity_id, "name": name})
+        return redact_data({
+            "count": len(thermostats), "thermostats": thermostats, "tool": candidates[0],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }, self.secrets.values(user_id))
 
     async def call_read_only_tool(self, user_id: str, name: str, arguments: dict[str, Any]) -> CallToolResult:
         if name not in READ_ONLY_TOOLS:

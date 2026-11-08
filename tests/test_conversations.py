@@ -155,7 +155,14 @@ def test_conversation_runner_streaming_providers(tmp_path, provider_name, tool_c
     if outcome == "complete":
         assert events[-1] == {"type": "complete"}
         assert "".join(event.get("text", "") for event in events) == expected
-        assert application.state.conversations.load("alice")[0][-1] == {"role": "assistant", "text": expected}
+        saved_messages = application.state.conversations.load("alice")[0]
+        assert saved_messages[-1]["text"] == expected
+        question_time = next(event["created_at"] for event in events if event["type"] == "timestamp" and event["role"] == "user")
+        response_times = [event["created_at"] for event in events if event["type"] == "delta"]
+        assert question_time.endswith("+00:00")
+        assert response_times and len(set(response_times)) == 1
+        assert saved_messages[-2]["created_at"] == question_time
+        assert saved_messages[-1]["created_at"] == response_times[0]
     else:
         assert events[-1]["type"] == "error"
         assert not any(event["type"] == "complete" for event in events)
@@ -294,11 +301,38 @@ def test_conversation_runner_does_not_save_interrupted_or_deleted_answer(tmp_pat
          patch("google.genai.Client") as provider:
         provider.return_value.aio.models.generate_content_stream = AsyncMock(return_value=stream())
         events, concurrent = asyncio.run(run())
-    assert events[0] == {"type": "delta", "text": "Début "}
+    assert events[0]["type"] == "timestamp"
+    assert next(event["text"] for event in events if event["type"] == "delta") == "Début "
     assert events[-1]["type"] == "error"
     assert "secret-key" not in str(events)
     assert concurrent == [{"type": "error", "message": "Une réponse est déjà en cours."}]
     assert application.state.conversations.load("alice") is None
+
+
+@pytest.mark.parametrize("sent_at", ["2026-10-25T02:59:00+02:00", "2026-10-25T02:59:00", "invalide", 42])
+def test_conversation_route_validates_and_preserves_question_timestamp(tmp_path, monkeypatch, sent_at) -> None:
+    from vtherm_assistant.models import ModelConfig
+
+    monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")
+    async def verify_admin(user_id):
+        return user_id == "alice"
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
+    application.state.models.configure("alice", ModelConfig("gemini", "model-test"))
+    application.state.secrets.put("alice", "gemini", "fake-key")
+    async def stream():
+        yield types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(role="model", parts=[types.Part(text="Réponse.")]))])
+    with TestClient(application, client=(SUPERVISOR_ADDRESS, 12345)) as client, \
+         patch.object(application.state.mcp, "tools_for", new_callable=AsyncMock, return_value=[]), \
+         patch("google.genai.Client") as provider:
+        provider.return_value.aio.models.generate_content_stream = AsyncMock(return_value=stream())
+        response = client.post("/api/conversation", json={"question": "Question", "created_at": sent_at},
+                               headers={"X-Remote-User-Id": "alice", "X-VTherm-Request": "1"})
+    if sent_at == "2026-10-25T02:59:00+02:00":
+        assert response.status_code == 200
+        assert application.state.conversations.load("alice")[0][0]["created_at"] == "2026-10-25T00:59:00+00:00"
+    else:
+        assert response.status_code == 400
+        assert application.state.conversations.load("alice") is None
 
 
 def test_conversation_route_streams_for_verified_user_and_masks_session_tokens(tmp_path) -> None:
@@ -401,10 +435,14 @@ def test_ingress_route_emits_first_fragment_before_producer_finishes(tmp_path, m
                     assert start["type"] == "http.response.start"
                     assert start["status"] == 200
                     assert dict(start["headers"])[b"x-accel-buffering"] == b"no"
+                    timestamp = await sent.get()
+                    assert json.loads(timestamp["body"])["type"] == "timestamp"
                     first = await sent.get()
                     assert first["type"] == "http.response.body"
                     assert first["more_body"] is True
-                    assert json.loads(first["body"]) == {"type": "delta", "text": "Premier fragment."}
+                    fragment = json.loads(first["body"])
+                    assert fragment["type"] == "delta" and fragment["text"] == "Premier fragment."
+                    assert fragment["created_at"].endswith("+00:00")
                     assert not request_task.done()
                     release.set()
                     await request_task
@@ -532,14 +570,14 @@ def test_conversation_route_uses_verified_identity_after_restart(tmp_path) -> No
     restarted = create_app("ingress", verify_admin=verify_admin, data_dir=directory)
     with TestClient(restarted, client=(SUPERVISOR_ADDRESS, 12345)) as client:
         response = client.get("/api/conversation?user_id=bob", headers={"X-Remote-User-Id": "alice"})
-        assert response.json() == {"messages": [{"text": "Alice"}]}
+        assert response.json() == {"messages": [{"text": "Alice"}], "inventory": None, "version": 1}
         assert response.headers["cache-control"] == "no-store"
-        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {"messages": [{"text": "Bob"}]}
+        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {"messages": [{"text": "Bob"}], "inventory": None, "version": 1}
         assert client.get("/api/conversation", headers={"X-Remote-User-Id": "other"}).status_code == 403
         assert client.delete("/api/conversation", headers={"X-Remote-User-Id": "alice"}).status_code == 403
         assert client.delete("/api/conversation?user_id=bob", headers={"X-Remote-User-Id": "alice", "X-VTherm-Request": "1"}).status_code == 204
-        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "alice"}).json() == {"messages": []}
-        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {"messages": [{"text": "Bob"}]}
+        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "alice"}).json() == {"messages": [], "inventory": None, "version": 2}
+        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {"messages": [{"text": "Bob"}], "inventory": None, "version": 1}
     assert restarted.state.conversations.load("alice") is None
     assert restarted.state.conversations.load("bob")[1] == {"thermostat": "bureau"}
 

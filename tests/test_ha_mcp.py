@@ -19,6 +19,123 @@ from vtherm_assistant.models import ModelConfig, ModelRegistry
 from vtherm_assistant.storage import ModelConfigStore, PrivateDatabase, SecretStore
 
 
+@pytest.mark.parametrize("tool_name", ["versatile_thermostat__list_vtherms", "assist__versatile_thermostat__list_vtherms"])
+def test_initial_inventory_reads_only_exposed_vtherms_without_model(tmp_path, tool_name):
+    secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
+    secrets.put("alice", "home_assistant", "alice-token")
+    client = HomeAssistantMCP("http://homeassistant:8123", secrets)
+    payload = {"count": 12, "thermostats": [
+        {"entity_id": f"climate.test_{index}", "name": f"Thermostat {index}"} for index in range(12)
+    ]}
+    with patch.object(client, "list_read_only_tools", new_callable=AsyncMock, return_value=[
+        Tool(name=tool_name, inputSchema={"type": "object"}),
+        Tool(name="versatile_thermostat__set_temperature", inputSchema={"type": "object"}),
+    ]), patch.object(client, "call_read_only_tool", new_callable=AsyncMock, return_value=CallToolResult(
+        content=[TextContent(type="text", text=json.dumps(payload))],
+    )) as call:
+        inventory = asyncio.run(client.inventory_for("alice"))
+    assert inventory["count"] == 12 and len(inventory["thermostats"]) == 12
+    assert inventory["tool"] == tool_name
+    assert inventory["created_at"].endswith("+00:00")
+    assert inventory["thermostats"] == payload["thermostats"]
+    call.assert_awaited_once_with("alice", tool_name, {})
+
+
+def test_initial_inventory_is_saved_once_restored_and_isolated(tmp_path, monkeypatch):
+    monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")
+    async def verify_admin(user_id):
+        return user_id in {"alice", "bob"}
+    directory = tmp_path / "private"
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=directory)
+    application.state.secrets.put("alice", "home_assistant", "alice-token")
+    inventory = {"count": 1, "thermostats": [{"entity_id": "climate.test", "name": "Thermostat"}],
+                 "created_at": "2026-11-08T11:00:00+00:00", "tool": "versatile_thermostat__list_vtherms"}
+    headers = {"X-Remote-User-Id": "alice", "X-VTherm-Request": "1"}
+    with TestClient(application, client=(SUPERVISOR_ADDRESS, 12345)) as client, \
+         patch.object(application.state.mcp, "inventory_for", new_callable=AsyncMock, return_value=inventory) as read_inventory, \
+         patch.object(application.state.conversation_agent, "for_user", new_callable=AsyncMock) as agent:
+        first = client.post("/api/conversation/inventory", json={"version": 0}, headers=headers)
+        assert first.status_code == 200 and first.json()["inventory"] == inventory
+        second = client.post("/api/conversation/inventory", json={"version": 1}, headers=headers)
+        assert second.json() == first.json()
+        read_inventory.assert_awaited_once_with("alice")
+        agent.assert_not_awaited()
+        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json()["inventory"] is None
+        client.delete("/api/conversation", headers=headers)
+        assert client.get("/api/conversation", headers=headers).json()["inventory"] is None
+        assert client.post("/api/conversation/inventory", json={"version": 2}, headers=headers).status_code == 200
+    restarted = create_app("ingress", verify_admin=verify_admin, data_dir=directory)
+    with TestClient(restarted, client=(SUPERVISOR_ADDRESS, 12345)) as client:
+        restored = client.get("/api/conversation", headers=headers).json()
+    assert restored["inventory"] == inventory and restored["messages"] == []
+
+@pytest.mark.parametrize("outcome", ["empty", "structured", "count", "entity", "duplicate", "tool_error", "missing_tool"])
+def test_initial_inventory_distinguishes_empty_from_invalid_or_unavailable(tmp_path, outcome):
+    secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
+    secrets.put("alice", "home_assistant", "alice-token")
+    client = HomeAssistantMCP("http://homeassistant:8123", secrets)
+    payload = {"count": 0, "thermostats": []}
+    if outcome == "count":
+        payload["count"] = 1
+    elif outcome == "entity":
+        payload = {"count": 1, "thermostats": [{"entity_id": "switch.forbidden"}]}
+    elif outcome == "duplicate":
+        payload = {"count": 2, "thermostats": [{"entity_id": "climate.test"}] * 2}
+    tool = Tool(name="versatile_thermostat__list_vtherms", inputSchema={"type": "object"})
+    result = CallToolResult(content=[] if outcome == "structured" else [TextContent(type="text", text=json.dumps(payload))],
+                            structuredContent=payload if outcome == "structured" else None, isError=outcome == "tool_error")
+    with patch.object(client, "list_read_only_tools", new_callable=AsyncMock, return_value=[] if outcome == "missing_tool" else [tool]), \
+         patch.object(client, "call_read_only_tool", new_callable=AsyncMock, return_value=result):
+        if outcome in {"empty", "structured"}:
+            inventory = asyncio.run(client.inventory_for("alice"))
+            assert inventory["count"] == 0 and inventory["thermostats"] == []
+        else:
+            with pytest.raises((MCPConnectionError, MCPToolDenied)):
+                asyncio.run(client.inventory_for("alice"))
+
+
+def test_initial_inventory_does_not_restore_deleted_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")
+    async def verify_admin(user_id):
+        return user_id == "alice"
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
+    application.state.secrets.put("alice", "home_assistant", "alice-token")
+    async def read_inventory(user_id):
+        application.state.conversations.delete(user_id)
+        return {"count": 0, "thermostats": [], "created_at": "2026-11-08T11:00:00+00:00"}
+    with TestClient(application, client=(SUPERVISOR_ADDRESS, 12345)) as client, \
+         patch.object(application.state.mcp, "inventory_for", new_callable=AsyncMock, side_effect=read_inventory):
+        response = client.post("/api/conversation/inventory", json={"version": 0},
+                               headers={"X-Remote-User-Id": "alice", "X-VTherm-Request": "1"})
+    assert response.status_code == 409
+    assert application.state.conversations.load("alice") is None
+
+
+@pytest.mark.parametrize("outcome", ["missing_token", "missing_tool", "mcp_error", "denied"])
+def test_initial_inventory_route_fails_safely_without_model(tmp_path, monkeypatch, caplog, outcome):
+    monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "supervisor-secret")
+    async def verify_admin(user_id):
+        return user_id == "alice"
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
+    if outcome != "missing_token":
+        application.state.secrets.put("alice", "home_assistant", "alice-token")
+    error = MCPToolDenied("private-body alice-token") if outcome == "missing_tool" else MCPConnectionError("private-body alice-token")
+    with TestClient(application, client=(SUPERVISOR_ADDRESS, 12345)) as client, \
+         patch.object(application.state.mcp, "inventory_for", new_callable=AsyncMock, side_effect=error) as inventory, \
+         patch.object(application.state.conversation_agent, "for_user", new_callable=AsyncMock) as agent:
+        response = client.post("/api/conversation/inventory", json={"version": 0},
+                               headers={"X-Remote-User-Id": "bob" if outcome == "denied" else "alice", "X-VTherm-Request": "1"})
+    assert response.status_code == (403 if outcome == "denied" else 503 if outcome == "missing_token" else 502)
+    if outcome != "denied":
+        assert response.json()["code"] == outcome
+    if outcome in {"denied", "missing_token"}:
+        inventory.assert_not_awaited()
+    agent.assert_not_awaited()
+    assert application.state.conversations.load("alice") is None
+    assert all(value not in response.text + caplog.text for value in ("alice-token", "supervisor-secret", "private-body"))
+
+
 def test_mcp_authenticates_with_each_users_token_and_reconnects(tmp_path, caplog) -> None:
     secrets = SecretStore(PrivateDatabase(tmp_path / "private"))
     secrets.put("alice", "home_assistant", "alice-token")

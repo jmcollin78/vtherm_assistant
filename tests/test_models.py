@@ -24,6 +24,159 @@ async def generate_responses(model, request):
     return [response async for response in model.generate_content_async(request)]
 
 
+@pytest.mark.parametrize("provider_name", ["openai", "anthropic", "gemini", "ollama"])
+def test_model_catalog_uses_personal_credentials_and_installed_models(tmp_path, provider_name):
+    database = PrivateDatabase(tmp_path / "private")
+    secrets = SecretStore(database)
+    registry = ModelRegistry(ModelConfigStore(database), secrets)
+    if provider_name == "ollama":
+        registry.configure("alice", ModelConfig("ollama", "manual-model", "http://ollama:11434"))
+    else:
+        secrets.put("alice", provider_name, "alice-key")
+    requests = []
+    def handle(request):
+        requests.append(request)
+        if provider_name == "gemini":
+            return httpx.Response(200, json={"models": [
+                {"name": "models/model-test", "supportedGenerationMethods": ["generateContent"]},
+                {"name": "models/embedding-test", "supportedGenerationMethods": ["embedContent"]},
+            ]})
+        if provider_name == "ollama":
+            return httpx.Response(200, json={"models": [{"name": "model-test"}]})
+        return httpx.Response(200, json={"data": [{"id": "model-test"}, {"id": "model-test"}]})
+    result = asyncio.run(registry.catalog_for("alice", provider_name, transport=httpx.MockTransport(handle)))
+    assert result["source"] == "dynamic" and result["complete"] is True
+    assert [model["id"] for model in result["models"]] == ["model-test"]
+    assert result["models"][0]["compatibility"] == "unverified"
+    assert len(requests) == 1 and requests[0].method == "GET"
+    if provider_name == "gemini":
+        assert requests[0].headers["x-goog-api-key"] == "alice-key"
+    elif provider_name == "anthropic":
+        assert requests[0].headers["x-api-key"] == "alice-key"
+    elif provider_name == "openai":
+        assert requests[0].headers["authorization"] == "Bearer alice-key"
+    else:
+        assert str(requests[0].url) == "http://ollama:11434/api/tags"
+        assert "authorization" not in requests[0].headers
+    assert "alice-key" not in str(result)
+
+
+@pytest.mark.parametrize("provider_name", ["anthropic", "gemini"])
+@pytest.mark.parametrize("outcome", ["complete", "failure", "repeated", "bounded"])
+def test_model_catalog_paginates_and_signals_incomplete_results(tmp_path, provider_name, outcome):
+    database = PrivateDatabase(tmp_path / "private")
+    secrets = SecretStore(database)
+    registry = ModelRegistry(ModelConfigStore(database), secrets)
+    secrets.put("alice", provider_name, "alice-key")
+    requests = []
+    def handle(request):
+        requests.append(request)
+        page_number = len(requests)
+        if page_number == 2 and outcome == "failure":
+            return httpx.Response(503, text="private-error alice-key")
+        more = outcome != "complete" or page_number == 1
+        cursor = "same" if outcome == "repeated" else str(page_number)
+        if provider_name == "gemini":
+            data = {"models": [{"name": f"models/model-{page_number}", "supportedGenerationMethods": ["generateContent"]}]}
+            if more:
+                data["nextPageToken"] = cursor
+        else:
+            data = {"data": [{"id": f"model-{page_number}"}], "has_more": more, "last_id": cursor}
+        return httpx.Response(200, json=data)
+    result = asyncio.run(registry.catalog_for("alice", provider_name, transport=httpx.MockTransport(handle)))
+    assert result["source"] == "dynamic"
+    assert result["complete"] is (outcome == "complete")
+    assert len(requests) == (10 if outcome == "bounded" else 2)
+    assert [model["id"] for model in result["models"]] == [f"model-{index + 1}" for index in range(1 if outcome == "failure" else len(requests))]
+    cursor_name = "pageToken" if provider_name == "gemini" else "after_id"
+    assert requests[1].url.params[cursor_name] == ("same" if outcome == "repeated" else "1")
+
+
+@pytest.mark.parametrize("provider_name", ["openai", "anthropic", "gemini", "ollama"])
+def test_model_catalog_missing_configuration_uses_identified_suggestions(tmp_path, provider_name):
+    database = PrivateDatabase(tmp_path / "private")
+    registry = ModelRegistry(ModelConfigStore(database), SecretStore(database))
+    def handle(_request):
+        pytest.fail("Aucun appel externe sans paramètres personnels")
+    result = asyncio.run(registry.catalog_for("alice", provider_name, transport=httpx.MockTransport(handle)))
+    assert result["source"] == "suggestions" and result["complete"] is False
+    assert result["models"] and "sans garantie" in result["message"]
+
+
+def test_model_catalog_isolates_users_and_never_reuses_replaced_credentials(tmp_path):
+    database = PrivateDatabase(tmp_path / "private")
+    secrets = SecretStore(database)
+    registry = ModelRegistry(ModelConfigStore(database), secrets)
+    secrets.put("alice", "openai", "alice-key")
+    secrets.put("bob", "openai", "bob-key")
+    observed = []
+    def handle(request):
+        observed.append(request.headers["authorization"])
+        return httpx.Response(200, json={"data": [{"id": f"model-{len(observed)}"}]})
+    async def run():
+        first = await registry.catalog_for("alice", "openai", transport=httpx.MockTransport(handle))
+        second = await registry.catalog_for("bob", "openai", transport=httpx.MockTransport(handle))
+        secrets.put("alice", "openai", "replacement-key")
+        third = await registry.catalog_for("alice", "openai", transport=httpx.MockTransport(handle))
+        return first, second, third
+    results = asyncio.run(run())
+    assert observed == ["Bearer alice-key", "Bearer bob-key", "Bearer replacement-key"]
+    assert [result["models"][0]["id"] for result in results] == ["model-1", "model-2", "model-3"]
+
+
+def test_model_catalog_uses_reconfigured_ollama_url_without_cache(tmp_path):
+    database = PrivateDatabase(tmp_path / "private")
+    registry = ModelRegistry(ModelConfigStore(database), SecretStore(database))
+    urls = []
+    def handle(request):
+        urls.append(str(request.url))
+        return httpx.Response(200, json={"models": []})
+    async def run():
+        for url in ("http://first:11434", "http://second:11434"):
+            registry.configure("alice", ModelConfig("ollama", "manual", url))
+            await registry.catalog_for("alice", "ollama", transport=httpx.MockTransport(handle))
+    asyncio.run(run())
+    assert urls == ["http://first:11434/api/tags", "http://second:11434/api/tags"]
+
+
+@pytest.mark.parametrize("outcome", ["empty", "http", "network", "invalid"])
+def test_model_catalog_errors_do_not_expose_credentials(tmp_path, caplog, outcome):
+    database = PrivateDatabase(tmp_path / "private")
+    secrets = SecretStore(database)
+    registry = ModelRegistry(ModelConfigStore(database), secrets)
+    secrets.put("alice", "openai", "alice-key")
+    def handle(request):
+        if outcome == "network":
+            raise httpx.ConnectError("alice-key private-body", request=request)
+        if outcome == "http":
+            return httpx.Response(401, text="alice-key private-body")
+        if outcome == "invalid":
+            return httpx.Response(200, text="alice-key private-body")
+        return httpx.Response(200, json={"data": []})
+    result = asyncio.run(registry.catalog_for("alice", "openai", transport=httpx.MockTransport(handle)))
+    assert "alice-key" not in str(result) + caplog.text
+    assert "private-body" not in str(result) + caplog.text
+    assert result["source"] == ("dynamic" if outcome == "empty" else "suggestions")
+    assert result["complete"] is (outcome == "empty")
+    if outcome == "empty":
+        assert result["models"] == []
+
+
+def test_model_catalog_route_requires_verified_user_and_returns_no_store(tmp_path):
+    async def verify_admin(user_id):
+        return user_id == "alice"
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
+    with TestClient(application, client=(SUPERVISOR_ADDRESS, 12345)) as client, \
+         patch.object(application.state.models, "catalog_for", new_callable=AsyncMock, return_value={
+             "provider": "openai", "source": "dynamic", "complete": True, "models": [], "message": "Aucun modèle retourné.",
+         }) as catalog:
+        denied = client.get("/api/models?provider=openai", headers={"X-Remote-User-Id": "bob"})
+        response = client.get("/api/models?provider=openai", headers={"X-Remote-User-Id": "alice"})
+    assert denied.status_code == 403 and response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    catalog.assert_awaited_once_with("alice", "openai")
+
+
 def test_model_configuration_and_keys_are_isolated_by_user(tmp_path) -> None:
     database = PrivateDatabase(tmp_path / "private")
     secrets = SecretStore(database)

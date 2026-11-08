@@ -9,6 +9,9 @@ Les utilisateurs de Versatile Thermostat ont besoin de comprendre leur configura
 - Proposer une app Home Assistant avec une interface de conversation spécialisée VTherm intégrée à l'IHM de l'app, accessible depuis la barre latérale lorsqu'elle y est affichée, sans carte de tableau de bord ni interface Assist.
 - Réserver l'accès à l'assistant, en première version, aux administrateurs Home Assistant dont l'identité et les droits sont vérifiés ; refuser les requêtes lorsque cette vérification est impossible.
 - Fournir une page de configuration distincte de la conversation pour choisir le fournisseur et saisir ses paramètres, notamment la clé API et l'URL lorsqu'elles sont nécessaires.
+- Proposer les modèles du fournisseur sélectionné via un catalogue dynamique récupéré par le backend, avec suggestions prédéfinies en secours et saisie manuelle, en distinguant disponibilité et compatibilité vérifiée.
+- Afficher la date et l'heure de chaque question et réponse avant son auteur, en petits caractères, dans la langue et le fuseau du navigateur de l'utilisateur ; conserver les instants après reprise.
+- Afficher au début de chaque nouvelle conversation le nombre et la liste des VTherm interrogeables, obtenus par une lecture MCP autorisée sans génération par le modèle ni modification de l'exposition, sans duplication lors d'une restauration.
 - Répondre aux questions sur la configuration, les réglages et l'utilisation, et expliquer les diagnostics à partir des états et de l'historique disponibles, y compris les entités associées et les plugins ou cartes pertinents.
 - Conserver localement la dernière conversation et son contexte pour chaque utilisateur, y compris après un redémarrage de l'app ; permettre de reprendre sa discussion après navigation dans Home Assistant et de l'effacer en démarrant une nouvelle conversation.
 - Permettre de demander des précisions et présenter les limites des données et des conclusions.

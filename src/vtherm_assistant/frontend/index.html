@@ -321,6 +321,28 @@
                 color: var(--heading);
                 background: #21262d;
             }
+            .inventory {
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+                border-bottom: 1px solid var(--line);
+                overflow-wrap: anywhere;
+            }
+            .inventory summary {
+                cursor: pointer;
+                font-weight: 700;
+                color: var(--heading);
+            }
+            .inventory ul {
+                padding-left: 20px;
+            }
+            .inventory li {
+                margin: 8px 0;
+            }
+            .inventory code {
+                display: block;
+                font-size: 12px;
+                color: var(--muted);
+            }
             .message-state {
                 font-size: 12px;
                 color: var(--muted);
@@ -575,7 +597,11 @@
                                     </select>
                                 </div>
                                 <div class="field">
+                                    <label for="model-catalog">Modèles proposés</label>
+                                    <select id="model-catalog"><option value="">Choisir un modèle</option></select>
                                     <label for="model">Modèle</label><input id="model" required autocomplete="off" placeholder="Nom du modèle" />
+                                    <div id="catalog-feedback" class="feedback" role="status"></div>
+                                    <button id="catalog-retry" class="retry" type="button">Actualiser les modèles</button>
                                 </div>
                             </div>
                             <div class="field" id="url-field" hidden>
@@ -626,6 +652,10 @@
                 send = byId("send"),
                 provider = byId("provider");
             let controller = null;
+            let catalogRequest = 0;
+            let inventoryRequest = 0;
+            let conversationVersion = 0;
+            let inventoryLoading = false;
             const request = (path, options = {}) =>
                 fetch(path, { ...options, headers: { "X-VTherm-Request": "1", ...(options.headers || {}) }, cache: "no-store" });
             const jsonOptions = (method, value) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
@@ -639,6 +669,7 @@
                 byId("ha-key").value = "";
             }
             function showConversation() {
+                catalogRequest++;
                 clearSecrets();
                 settings.hidden = true;
                 conversation.hidden = false;
@@ -669,6 +700,38 @@
                 byId("delete-key").hidden = local;
                 byId("provider-key").value = "";
             }
+            async function loadModelCatalog() {
+                const selectedProvider = provider.value;
+                const version = ++catalogRequest;
+                const selector = byId("model-catalog");
+                selector.replaceChildren(new Option("Choisir un modèle", ""));
+                selector.disabled = true;
+                feedback("catalog-feedback", "Chargement des modèles…");
+                try {
+                    const response = await checkedRequest(`api/models?provider=${encodeURIComponent(selectedProvider)}`);
+                    const data = await response.json();
+                    if (version !== catalogRequest || provider.value !== selectedProvider) return;
+                    if (data.provider !== selectedProvider || !Array.isArray(data.models)) throw new Error("Catalogue invalide");
+                    for (const model of data.models) {
+                        if (typeof model.id !== "string") continue;
+                        const status = model.compatibility === "verified" ? "vérifié" : model.compatibility === "incompatible" ? "incompatible" : "non vérifié";
+                        const option = new Option(`${model.id} (${status})`, model.id);
+                        option.disabled = model.compatibility === "incompatible";
+                        selector.append(option);
+                    }
+                    const configuredModel = byId("model").value;
+                    selector.value = data.models.some(model => model.id === configuredModel) ? configuredModel : "";
+                    feedback("catalog-feedback", `${data.source === "suggestions" ? "Suggestions prédéfinies. " : ""}${data.message || ""}`, !data.complete);
+                } catch {
+                    if (version === catalogRequest) feedback("catalog-feedback", "Catalogue inaccessible ; saisissez le modèle ou réessayez.", true);
+                } finally {
+                    if (version === catalogRequest) selector.disabled = false;
+                }
+            }
+            byId("model-catalog").onchange = () => {
+                if (byId("model-catalog").value) byId("model").value = byId("model-catalog").value;
+            };
+            byId("catalog-retry").onclick = loadModelCatalog;
             function appendInlineMarkdown(parent, text) {
                 const pattern = /(\[[^\]\n]+\]\(https:\/\/[^\s)]+\)|\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\*[^*\n]+\*|_[^_\n]+_)/g;
                 let position = 0;
@@ -805,7 +868,7 @@
                     container.append(paragraph);
                 }
             }
-            function addMessage(role, text) {
+            function addMessage(role, text, createdAt = null) {
                 const empty = messages.querySelector(".empty");
                 if (empty) empty.remove();
                 const row = document.createElement("article");
@@ -820,6 +883,20 @@
                     state = document.createElement("div");
                 label.className = "message-label";
                 label.textContent = role === "user" ? "Vous" : "Assistant";
+                const timestamp = document.createElement("time");
+                timestamp.style.fontSize = "0.75rem";
+                timestamp.style.fontWeight = "400";
+                timestamp.style.marginRight = "8px";
+                label.prepend(timestamp);
+                function setTimestamp(value) {
+                    const instant = typeof value === "string" ? new Date(value) : null;
+                    timestamp.hidden = !instant || Number.isNaN(instant.getTime());
+                    if (!timestamp.hidden) {
+                        timestamp.dateTime = instant.toISOString();
+                        timestamp.textContent = new Intl.DateTimeFormat(navigator.language, { dateStyle: "short", timeStyle: "medium" }).format(instant);
+                    }
+                }
+                setTimestamp(createdAt);
                 body.className = "message-text";
                 if (role === "assistant") renderMarkdown(body, text);
                 else body.textContent = text;
@@ -828,10 +905,98 @@
                 row.append(avatar, content);
                 messages.append(row);
                 messages.scrollTop = messages.scrollHeight;
-                return { row, body, state, text };
+                return { row, body, state, text, setTimestamp };
+            }
+            function renderInventory(data, status = "", error = false) {
+                let panel = messages.querySelector(".inventory");
+                if (!panel) {
+                    panel = document.createElement("section");
+                    panel.id = "inventory";
+                    panel.className = "inventory";
+                    messages.prepend(panel);
+                }
+                panel.replaceChildren();
+                panel.dataset.state = error ? "error" : data ? "ready" : "loading";
+                if (data) {
+                    const details = document.createElement("details");
+                    details.open = true;
+                    const summary = document.createElement("summary");
+                    summary.textContent = `${data.count} VTherm interrogeable${data.count === 1 ? "" : "s"}`;
+                    details.append(summary);
+                    if (data.created_at) {
+                        const instant = new Date(data.created_at);
+                        if (!Number.isNaN(instant.getTime())) {
+                            const date = document.createElement("div");
+                            date.className = "message-state";
+                            date.textContent = `Inventaire initial du ${new Intl.DateTimeFormat(navigator.language, { dateStyle: "short", timeStyle: "medium" }).format(instant)}`;
+                            details.append(date);
+                        }
+                    }
+                    const list = document.createElement("ul");
+                    for (const thermostat of data.thermostats) {
+                        const item = document.createElement("li");
+                        const name = document.createElement("span");
+                        name.textContent = thermostat.name;
+                        const identifier = document.createElement("code");
+                        identifier.textContent = thermostat.entity_id;
+                        item.append(name, identifier);
+                        list.append(item);
+                    }
+                    details.append(list);
+                    if (!data.count) details.append(document.createTextNode("Aucun VTherm interrogeable."));
+                    panel.append(details);
+                } else {
+                    const message = document.createElement("div");
+                    message.className = `message-state${error ? " error" : ""}`;
+                    message.setAttribute("role", "status");
+                    message.textContent = status;
+                    panel.append(message);
+                    if (error) {
+                        const retry = document.createElement("button");
+                        retry.type = "button";
+                        retry.className = "retry";
+                        retry.textContent = "Réessayer l'inventaire";
+                        retry.onclick = () => loadConversation().catch(() => feedback("app-feedback", "Chargement impossible ; réessayez.", true));
+                        panel.append(retry);
+                    }
+                }
+            }
+            async function initializeInventory() {
+                const version = ++inventoryRequest;
+                inventoryLoading = true;
+                send.disabled = true;
+                renderInventory(null, "Chargement des VTherm interrogeables…");
+                try {
+                    const response = await request("api/conversation/inventory", jsonOptions("POST", { version: conversationVersion }));
+                    const data = await response.json();
+                    if (version !== inventoryRequest) return;
+                    if (response.status === 409 && data.code === "conversation_changed") {
+                        await loadConversation();
+                        return;
+                    }
+                    if (!response.ok) {
+                        const errors = {
+                            missing_token: "Enregistrez votre jeton Home Assistant dans la configuration, puis réessayez.",
+                            missing_tool: "Outil de liste VTherm indisponible ; vérifiez les API MCP exposées, puis réessayez.",
+                            missing_connection: "Connexion Home Assistant non configurée ; vérifiez les paramètres de l'app.",
+                        };
+                        renderInventory(null, errors[data.code] || "Lecture MCP impossible ; vérifiez la connexion et le jeton, puis réessayez.", true);
+                        return;
+                    }
+                    if (!data.inventory || !Array.isArray(data.inventory.thermostats) || data.inventory.count !== data.inventory.thermostats.length) throw new Error("Inventaire invalide");
+                    conversationVersion = data.version;
+                    renderInventory(data.inventory);
+                } catch {
+                    if (version === inventoryRequest) renderInventory(null, "Inventaire inaccessible ; réessayez.", true);
+                } finally {
+                    if (version === inventoryRequest) {
+                        inventoryLoading = false;
+                        send.disabled = Boolean(controller);
+                    }
+                }
             }
             function showEmpty() {
-                if (!messages.children.length) {
+                if (!messages.querySelector(".message, .empty")) {
                     const empty = document.createElement("div");
                     empty.className = "empty";
                     const title = document.createElement("strong");
@@ -841,7 +1006,9 @@
                 }
             }
             async function loadConversation() {
+                const version = ++inventoryRequest;
                 const response = await request("api/conversation");
+                if (version !== inventoryRequest) return;
                 if (response.status === 403) {
                     const ingress = response.headers.get("X-VTherm-Deployment-Mode") === "ingress";
                     byId("login").querySelector("h1").textContent = ingress ? "Accès refusé" : "Connexion requise";
@@ -851,17 +1018,22 @@
                 }
                 if (!response.ok) throw new Error("Impossible de charger la conversation.");
                 const data = await response.json();
+                conversationVersion = data.version ?? 0;
+                inventoryLoading = false;
                 messages.replaceChildren();
+                if (data.inventory) renderInventory(data.inventory);
                 for (const message of data.messages)
-                    if (["user", "assistant"].includes(message.role) && typeof message.text === "string") addMessage(message.role, message.text);
+                    if (["user", "assistant"].includes(message.role) && typeof message.text === "string") addMessage(message.role, message.text, message.created_at);
                 showEmpty();
                 conversation.hidden = false;
                 byId("header-actions").hidden = false;
+                if (!data.inventory && !data.messages.length) await initializeInventory();
             }
             async function submitQuestion(text) {
-                if (controller || !text.trim()) return;
+                if (controller || inventoryLoading || !text.trim()) return;
                 question.value = "";
-                addMessage("user", text);
+                const sentAt = new Date().toISOString();
+                const userMessage = addMessage("user", text, sentAt);
                 const answer = addMessage("assistant", "");
                 answer.state.textContent = "Réponse en cours…";
                 controller = new AbortController();
@@ -869,7 +1041,7 @@
                 let complete = false,
                     failure = "La réponse a été interrompue.";
                 try {
-                    const response = await request("api/conversation", { ...jsonOptions("POST", { question: text }), signal: controller.signal });
+                    const response = await request("api/conversation", { ...jsonOptions("POST", { question: text, created_at: sentAt }), signal: controller.signal });
                     if (!response.ok || !response.body) throw new Error("Impossible de lancer la réponse.");
                     const reader = response.body.getReader(),
                         decoder = new TextDecoder();
@@ -883,10 +1055,12 @@
                             if (line) {
                                 const event = JSON.parse(line);
                                 if (event.type === "delta") {
+                                    if (!answer.text) answer.setTimestamp(event.created_at || new Date().toISOString());
                                     answer.text += event.text;
                                     renderMarkdown(answer.body, answer.text);
                                     messages.scrollTop = messages.scrollHeight;
-                                } else if (event.type === "notice") answer.state.textContent = event.message;
+                                } else if (event.type === "timestamp" && event.role === "user") userMessage.setTimestamp(event.created_at);
+                                else if (event.type === "notice") answer.state.textContent = event.message;
                                 else if (event.type === "error") failure = event.message;
                                 else if (event.type === "complete") complete = true;
                             }
@@ -896,7 +1070,7 @@
                     if (error.name === "AbortError") return;
                 } finally {
                     controller = null;
-                    send.disabled = false;
+                    send.disabled = inventoryLoading;
                 }
                 if (complete) answer.state.textContent = "";
                 else {
@@ -932,8 +1106,9 @@
                     async () => {
                         await checkedRequest("api/conversation", { method: "DELETE" });
                         if (controller) controller.abort();
-                        messages.replaceChildren();
-                        showEmpty();
+                        inventoryRequest++;
+                        inventoryLoading = false;
+                        await loadConversation();
                         showConversation();
                         feedback("app-feedback", "");
                     },
@@ -956,6 +1131,7 @@
                         byId("model").value = model?.model || "";
                         byId("url").value = model?.url || "";
                         setProviderFields();
+                        loadModelCatalog();
                         loaded = true;
                         feedback("model-feedback", "");
                     },
@@ -963,8 +1139,16 @@
                 );
                 byId("model-form").inert = !loaded;
             };
-            byId("back").onclick = showConversation;
-            provider.onchange = setProviderFields;
+            byId("back").onclick = () => {
+                showConversation();
+                if (!messages.querySelector(".message") && messages.querySelector('.inventory[data-state="error"]')) {
+                    loadConversation().catch(() => feedback("app-feedback", "Chargement impossible ; réessayez.", true));
+                }
+            };
+            provider.onchange = () => {
+                setProviderFields();
+                loadModelCatalog();
+            };
             byId("model-form").onsubmit = (event) => {
                 event.preventDefault();
                 const selectedProvider = provider.value,
@@ -986,6 +1170,7 @@
                             }
                         }
                         feedback("model-feedback", "Configuration enregistrée.");
+                        loadModelCatalog();
                     },
                     "Configuration non enregistrée ; vérifiez les paramètres et réessayez.",
                 );
@@ -999,6 +1184,7 @@
                     async () => {
                         await checkedRequest(`api/secrets/${selectedProvider}`, { method: "DELETE" });
                         feedback("model-feedback", "Clé supprimée.");
+                        loadModelCatalog();
                     },
                     "Clé non supprimée ; réessayez.",
                 );

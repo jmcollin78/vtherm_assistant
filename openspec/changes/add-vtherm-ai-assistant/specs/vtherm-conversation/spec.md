@@ -58,6 +58,41 @@ Le système MUST utiliser le contexte de la conversation courante pour interpré
 - **WHEN** l'utilisateur active le bouton de nouvelle conversation
 - **THEN** les messages et le contexte de sa conversation courante sont supprimés du stockage de l'app et ne sont pas repris dans la nouvelle conversation, sans modifier les conversations des autres utilisateurs
 
+### Requirement: Horodatage localisé des messages
+L'interface MUST afficher la date et l'heure de chaque question et réponse en petits caractères avant le libellé « Vous » ou « Assistant ». Le format MUST respecter la langue et le fuseau horaire du navigateur de l'utilisateur, et non ceux du serveur Home Assistant. L'instant de la question MUST correspondre à son envoi et celui de la réponse à son premier fragment affichable ; ces instants MUST être conservés avec la conversation et ne pas être recalculés à chaque fragment ou rechargement.
+
+#### Scenario: Question et réponse progressive
+- **WHEN** l'utilisateur envoie une question et reçoit une réponse progressive
+- **THEN** la question et la réponse affichent chacune leur horodatage avant le libellé de leur auteur
+- **AND** l'horodatage de la réponse reste celui de son premier fragment pendant toute sa progression
+
+#### Scenario: Fuseau différent du serveur
+- **WHEN** le navigateur utilise une langue ou un fuseau horaire différent de celui du serveur HA
+- **THEN** les dates et heures respectent les conventions du navigateur, y compris les changements d'heure applicables à chaque instant
+
+#### Scenario: Restauration des horodatages
+- **WHEN** l'utilisateur reprend sa conversation après navigation, rechargement ou redémarrage
+- **THEN** les instants enregistrés sont conservés et affichés dans la langue et le fuseau actuels de son navigateur
+- **AND** un ancien message sans horodatage connu ne reçoit pas une date inventée
+
+### Requirement: Inventaire initial des VTherm interrogeables
+Le système MUST afficher avant la première question de chaque nouvelle conversation le nombre et la liste des VTherm interrogeables, avec nom et identifiant `climate`. Cet inventaire MUST provenir de l'outil MCP de liste autorisé avec le jeton personnel de l'utilisateur vérifié, sans génération par le modèle ni modification d'exposition. Le compte MUST correspondre à la liste ; l'interface MUST distinguer chargement, liste vide et échec avec relance.
+
+#### Scenario: Première conversation ou nouvelle conversation
+- **WHEN** un utilisateur autorisé accède pour la première fois à une conversation vierge ou active l'action de nouvelle conversation
+- **THEN** l'application consulte l'outil MCP de liste en lecture seule et affiche l'inventaire au début de cette conversation avant la première question
+- **AND** seuls les VTherm accessibles selon l'exposition Assist et les autorisations effectives sont présentés comme interrogeables
+
+#### Scenario: Restauration sans duplication
+- **WHEN** l'utilisateur restaure une conversation existante
+- **THEN** l'inventaire initial conservé n'est pas ajouté une seconde fois
+- **AND** il reste identifié comme l'inventaire obtenu à l'initialisation, sans garantir que l'accessibilité des entités n'a pas changé depuis
+
+#### Scenario: Liste vide ou lecture impossible
+- **WHEN** aucun VTherm n'est retourné, que le jeton MCP manque, que l'outil de liste est absent ou que sa lecture échoue
+- **THEN** l'interface distingue une liste vide d'une lecture impossible et propose une action pertinente et une relance en cas d'échec
+- **AND** aucun inventaire n'est inventé et aucune clé fournisseur n'est requise pour cette lecture MCP
+
 ### Requirement: Clarification en cas d'ambiguïté
 Le système MUST demander une précision lorsqu'il ne peut pas identifier avec suffisamment de certitude le thermostat ou l'intention de l'utilisateur.
 

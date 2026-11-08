@@ -32,6 +32,32 @@ Le système MUST permettre de configurer OpenAI, Claude (Anthropic), Gemini (Goo
 - **WHEN** l'utilisateur sélectionne un modèle local compatible qui ne nécessite pas de clé
 - **THEN** la configuration ne requiert pas de clé de fournisseur distant
 
+### Requirement: Catalogue de modèles par fournisseur
+Le système MUST proposer un catalogue dynamique pour le fournisseur choisi, récupéré par le backend sans exposer de secrets, avec des suggestions prédéfinies identifiées en secours et une saisie manuelle toujours disponible. Il MUST distinguer disponibilité et compatibilité vérifiée avec l'assistant. L'interface MUST distinguer chargement, liste vide et erreur sans remplacer automatiquement le modèle configuré.
+
+#### Scenario: Catalogue distant
+- **WHEN** l'utilisateur choisit OpenAI, Claude ou Gemini et dispose des identifiants personnels nécessaires enregistrés
+- **THEN** le backend récupère les modèles annoncés par l'API officielle et l'interface propose ceux du fournisseur sélectionné
+- **AND** les statuts de compatibilité vérifiée, d'incompatibilité connue ou de modèle non vérifié restent distincts de cette disponibilité
+
+#### Scenario: Catalogue Ollama
+- **WHEN** l'utilisateur choisit Ollama avec une URL configurée et accessible
+- **THEN** la liste dynamique présente les modèles installés retournés par ce serveur, sans clé de fournisseur distant obligatoire ni téléchargement de modèle
+
+#### Scenario: Catalogue inaccessible ou identifiants absents
+- **WHEN** l'API de catalogue est inaccessible ou que les paramètres nécessaires ne sont pas encore enregistrés
+- **THEN** l'interface signale cette limite sans secret, propose des suggestions prédéfinies identifiées comme telles et conserve la saisie manuelle
+- **AND** elle ne prétend pas que ces suggestions sont accessibles avec les identifiants de l'utilisateur ou installées sur Ollama
+
+#### Scenario: Changement de fournisseur et configuration existante
+- **WHEN** l'utilisateur change de fournisseur ou que le catalogue est actualisé
+- **THEN** aucune réponse tardive du fournisseur précédent n'est affichée comme le catalogue du nouveau fournisseur
+- **AND** le modèle configuré n'est pas remplacé automatiquement, même s'il n'apparaît pas dans le catalogue
+
+#### Scenario: Catalogue vide
+- **WHEN** l'API renvoie avec succès une liste vide
+- **THEN** l'interface indique qu'aucun modèle n'a été retourné, sans présenter une panne comme certaine, et laisse la saisie manuelle disponible
+
 ### Requirement: Compatibilité des générations de modèles
 Pour chaque gamme de chaque fournisseur, le système MUST prendre en charge la dernière génération et la précédente lorsqu'elles existent et sont compatibles. Les modèles et versions pris en charge MUST être vérifiés et documentés. La documentation MUST distinguer les modèles vérifiés compatibles, les incompatibilités connues et les modèles non encore vérifiés.
 

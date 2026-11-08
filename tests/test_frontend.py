@@ -14,11 +14,11 @@ from vtherm_assistant.models import ModelConfig
 
 
 @pytest.fixture(name="page")
-def browser_page():
+def browser_page(request):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         try:
-            yield browser.new_page()
+            yield browser.new_page(**getattr(request, "param", {}))
         finally:
             browser.close()
 
@@ -54,6 +54,15 @@ def browser_frontend(page, request):
             route.fulfill(content_type="text/html", body=FRONTEND.read_text())
         elif path == "/brand/logo.png":
             route.fulfill(content_type="image/png", body=BRAND_LOGO.read_bytes())
+        elif path == "/api/models":
+            selected_provider = route.request.url.split("provider=")[-1]
+            if state.get("hold_catalog") == selected_provider:
+                state["pending_catalog"] = route
+            else:
+                route.fulfill(json=state.get("catalogs", {}).get(selected_provider, {
+                    "provider": selected_provider, "source": "dynamic", "complete": True,
+                    "models": [{"id": selected_provider + "-catalog-model", "compatibility": "unverified"}], "message": "Compatibilité non vérifiée.",
+                }))
         elif path == "/api/model":
             if method == "GET" and state.get("hold_model"):
                 state["pending_model"] = route
@@ -63,10 +72,21 @@ def browser_frontend(page, request):
             else:
                 route.fulfill(json=state["model"])
         elif path == "/api/conversation" and method == "GET":
-            route.fulfill(json={"messages": state["messages"]})
+            route.fulfill(json={"messages": state["messages"], "version": state.get("version", 0), "inventory": state.get("inventory")})
         elif path == "/api/conversation" and method == "DELETE":
             state["messages"] = []
+            state["inventory"] = None
+            state["version"] = state.get("version", 0) + 1
             route.fulfill(status=204)
+        elif path == "/api/conversation/inventory":
+            if state.get("hold_inventory"):
+                state["pending_inventory"] = route
+            elif state.get("inventory_payload") is None:
+                route.fulfill(status=503, json={"code": "missing_token"})
+            else:
+                state["inventory"] = state["inventory_payload"]
+                state["version"] = state.get("version", 0) + 1
+                route.fulfill(json={"inventory": state["inventory"], "version": state["version"]})
         elif path == "/api/conversation" and method == "POST":
             if state["stream"] == "pending":
                 state["pending"] = route
@@ -76,6 +96,8 @@ def browser_frontend(page, request):
                 events = [*events, {"type": "complete"}]
                 state["messages"] += [{"role": "user", "text": route.request.post_data_json["question"]},
                                       {"role": "assistant", "text": state["stream_text"] or "Je consulte le thermostat. En attente."}]
+                state["messages"][-2]["created_at"] = route.request.post_data_json.get("created_at")
+                state["messages"][-1]["created_at"] = next((event.get("created_at") for event in events if event["type"] == "delta"), None)
             elif state["stream"] == "error":
                 events.append({"type": "error", "message": "Fournisseur indisponible ; réessayez."})
             route.fulfill(content_type="application/x-ndjson", body="".join(json.dumps(event) + "\n" for event in events))
@@ -85,6 +107,7 @@ def browser_frontend(page, request):
             route.fulfill(status=404)
 
     page.route("http://assistant.test/**", handle)
+    state["handle"] = handle
     page.goto("http://assistant.test/")
     expect(page.locator("#conversation")).to_be_visible()
     yield page, state
@@ -99,6 +122,126 @@ def open_settings(page):
 def assert_empty_secrets(page):
     expect(page.locator("#provider-key")).to_have_value("")
     expect(page.locator("#ha-key")).to_have_value("")
+
+
+@pytest.mark.parametrize("page", [
+    {"locale": "fr-FR", "timezone_id": "Europe/Paris"},
+    {"locale": "en-US", "timezone_id": "America/New_York"},
+    {"locale": "en-GB", "timezone_id": "UTC"},
+], indirect=True)
+def test_frontend_localizes_and_restores_message_timestamps(frontend, tmp_path):
+    page, state = frontend
+    expect(page.locator(".message time:visible")).to_have_count(0)
+    instants = ["2026-10-25T00:59:00Z", "2026-10-25T01:01:00Z"]
+    for message, instant in zip(state["messages"], instants):
+        message["created_at"] = instant
+    page.reload()
+    expected = page.evaluate("instants => instants.map(value => new Intl.DateTimeFormat(navigator.language, {dateStyle: 'short', timeStyle: 'medium'}).format(new Date(value)))", instants)
+    expect(page.locator(".message time")).to_have_text(expected)
+    assert page.locator(".message-label").first.evaluate("label => label.firstElementChild.tagName") == "TIME"
+    zone = page.evaluate("Intl.DateTimeFormat().resolvedOptions().timeZone")
+    hours = page.evaluate("instants => instants.map(value => new Date(value).getHours())", instants)
+    assert hours == {"Europe/Paris": [2, 2], "America/New_York": [20, 21], "UTC": [0, 1]}[zone]
+    state["stream_events"] = [
+        {"type": "delta", "text": "Premier. ", "created_at": instants[0]},
+        {"type": "delta", "text": "Dernier.", "created_at": instants[1]},
+    ]
+    page.locator("#question").fill("Question horodatée")
+    page.locator("#send").click()
+    expect(page.locator(".message-state").last).to_have_text("")
+    expect(page.locator(".message.assistant time").last).to_have_text(expected[0])
+    before = page.locator(".message time").all_text_contents()
+    page.reload()
+    expect(page.locator(".message time")).to_have_text(before)
+    open_settings(page)
+    page.locator("#back").click()
+    expect(page.locator(".message time")).to_have_text(before)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    if zone == "Europe/Paris":
+        screenshot = tmp_path / "timestamps.png"
+        page.screenshot(path=str(screenshot), full_page=True)
+        print(f"Capture horodatages : {screenshot}")
+    saved_instants = page.locator(".message time").evaluate_all("elements => elements.map(element => element.dateTime)")
+    changed_context = page.context.browser.new_context(locale=page.evaluate("navigator.language"), timezone_id="Asia/Tokyo", viewport=page.viewport_size)
+    try:
+        changed_page = changed_context.new_page()
+        changed_page.route("http://assistant.test/**", state["handle"])
+        changed_page.goto("http://assistant.test/")
+        localized = changed_page.evaluate("instants => instants.map(value => new Intl.DateTimeFormat(navigator.language, {dateStyle: 'short', timeStyle: 'medium'}).format(new Date(value)))", saved_instants)
+        expect(changed_page.locator(".message time")).to_have_text(localized)
+        assert changed_page.locator(".message time").evaluate_all("elements => elements.map(element => element.dateTime)") == saved_instants
+    finally:
+        changed_context.close()
+
+
+@pytest.mark.parametrize("count", [0, 12])
+def test_frontend_initial_inventory_is_safe_restored_and_not_duplicated(frontend, count, tmp_path):
+    page, state = frontend
+    state["messages"] = []
+    state["prefix"] = "/api/hassio_ingress/test-session"
+    state["inventory_payload"] = {"count": count, "created_at": "2026-11-08T11:00:00+00:00", "thermostats": [
+        {"entity_id": f"climate.test_{index}", "name": "<img src=x onerror=alert(1)>" if index == 0 else f"Thermostat {index}"}
+        for index in range(count)
+    ]}
+    page.goto("http://assistant.test" + state["prefix"] + "/")
+    expect(page.locator("#inventory summary")).to_contain_text(f"{count} VTherm")
+    expect(page.locator("#inventory li")).to_have_count(count)
+    expect(page.locator("#send")).to_be_enabled()
+    assert page.locator("#inventory img, #inventory script").count() == 0
+    if count:
+        expect(page.locator("#inventory code").first).to_have_text("climate.test_0")
+        expect(page.locator("#inventory li span").first).to_contain_text("<img")
+    calls = sum(path == "/api/conversation/inventory" for _method, path, _body in state["calls"])
+    page.reload()
+    expect(page.locator("#inventory li")).to_have_count(count)
+    expect(page.locator("#inventory")).to_have_count(1)
+    assert sum(path == "/api/conversation/inventory" for _method, path, _body in state["calls"]) == calls
+    page.locator("#new").click()
+    expect(page.locator("#new")).to_be_enabled()
+    expect(page.locator("#inventory summary")).to_contain_text(f"{count} VTherm")
+    assert sum(path == "/api/conversation/inventory" for _method, path, _body in state["calls"]) == calls + 1
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    if count:
+        state["inventory"]["thermostats"][0]["name"] = "Thermostat salon (test)"
+        page.reload()
+        expect(page.locator("#inventory li span").first).to_have_text("Thermostat salon (test)")
+        inventory_image = tmp_path / "inventory.png"
+        page.screenshot(path=str(inventory_image), full_page=True)
+        open_settings(page)
+        expect(page.locator("#model-catalog")).to_be_enabled()
+        catalog_image = tmp_path / "catalog.png"
+        page.screenshot(path=str(catalog_image), full_page=True)
+        print(f"Captures inventaire et catalogue : {inventory_image} {catalog_image}")
+
+
+def test_frontend_initial_inventory_errors_can_be_retried(frontend):
+    page, state = frontend
+    state["messages"] = []
+    page.reload()
+    expect(page.locator("#inventory")).to_contain_text("jeton Home Assistant")
+    expect(page.locator("#send")).to_be_enabled()
+    state["inventory_payload"] = {"count": 0, "thermostats": [], "created_at": "2026-11-08T11:00:00+00:00"}
+    page.get_by_role("button", name="Réessayer l'inventaire", exact=True).click()
+    expect(page.locator("#inventory")).to_contain_text("Aucun VTherm interrogeable")
+    expect(page.locator("#inventory")).to_have_attribute("data-state", "ready")
+
+
+def test_frontend_initial_inventory_ignores_late_deleted_conversation(frontend):
+    page, state = frontend
+    state["messages"] = []
+    state["hold_inventory"] = True
+    page.reload()
+    expect(page.locator("#inventory")).to_contain_text("Chargement")
+    expect(page.locator("#send")).to_be_disabled()
+    old_request = state["pending_inventory"]
+    state["hold_inventory"] = False
+    state["inventory_payload"] = {"count": 1, "thermostats": [{"entity_id": "climate.new", "name": "Nouvelle liste"}]}
+    page.locator("#new").click()
+    expect(page.locator("#inventory")).to_contain_text("Nouvelle liste")
+    old_request.fulfill(json={"inventory": {"count": 1, "thermostats": [{"entity_id": "climate.old", "name": "Ancienne liste"}]}, "version": 1})
+    expect(page.locator("#inventory li")).to_have_count(1)
+    expect(page.locator("#inventory code")).to_have_text("climate.new")
+    assert "Ancienne liste" not in page.locator("#inventory").inner_text()
 
 
 def test_frontend_navigation_under_ingress_prefix(frontend):
@@ -155,6 +298,12 @@ def test_frontend_configures_each_provider_without_losing_messages(frontend, pro
     page, state = frontend
     open_settings(page)
     page.locator("#provider").select_option(provider_name)
+    expect(page.locator("#model-catalog")).to_be_enabled()
+    expect(page.locator("#model-catalog option").last).to_contain_text(provider_name + "-catalog-model")
+    expect(page.locator("#model-catalog")).to_have_value("")
+    expect(page.locator("#model")).to_have_value("model-test")
+    page.locator("#model-catalog").select_option(provider_name + "-catalog-model")
+    expect(page.locator("#model")).to_have_value(provider_name + "-catalog-model")
     page.locator("#model").fill("model-configured")
     if provider_name == "ollama":
         expect(page.locator("#key-field")).to_be_hidden()
@@ -174,6 +323,36 @@ def test_frontend_configures_each_provider_without_losing_messages(frontend, pro
     page.reload()
     expect(page.locator(".message")).to_have_count(2)
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+@pytest.mark.parametrize("failure", ["network", "http"])
+def test_frontend_model_catalog_errors_preserve_manual_configuration(frontend, failure):
+    page, state = frontend
+    state["failures"][("GET", "/api/models")] = failure
+    open_settings(page)
+    expect(page.locator("#catalog-feedback")).to_contain_text("réessayez")
+    expect(page.locator("#model")).to_have_value("model-test")
+    assert "FAKE_SECRET_DO_NOT_DISPLAY" not in page.locator("body").inner_text()
+    state["failures"].clear()
+    page.locator("#catalog-retry").click()
+    expect(page.locator("#catalog-feedback")).to_have_text("Compatibilité non vérifiée.")
+    expect(page.locator("#model")).to_have_value("model-test")
+
+
+def test_frontend_model_catalog_ignores_late_results_and_identifies_fallback(frontend):
+    page, state = frontend
+    state["hold_catalog"] = "gemini"
+    open_settings(page)
+    expect(page.locator("#catalog-feedback")).to_contain_text("Chargement")
+    state["catalogs"] = {"openai": {"provider": "openai", "source": "suggestions", "complete": False,
+                                   "models": [{"id": "suggestion", "compatibility": "unverified"}], "message": "Sans garantie d'accès."}}
+    page.locator("#provider").select_option("openai")
+    expect(page.locator("#catalog-feedback")).to_contain_text("Suggestions prédéfinies")
+    state["pending_catalog"].fulfill(json={"provider": "gemini", "source": "dynamic", "complete": True,
+                                           "models": [{"id": "late-model", "compatibility": "unverified"}]})
+    expect(page.locator("#model-catalog option").last).to_have_attribute("value", "suggestion")
+    expect(page.locator("#model")).to_have_value("model-test")
+    assert page.locator("#model-catalog").inner_text().find("late-model") == -1
 
 
 @pytest.mark.parametrize("leave_action", ["back", "new"])
@@ -359,6 +538,7 @@ def test_frontend_restores_isolated_followups_after_backend_restart(frontend, tm
     monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")
     directory = tmp_path / "private"
     active = {"user": "alice"}
+    timestamps = {}
     observed_requests = []
     tool = Tool(name="versatile_thermostat__get_status", inputSchema={"type": "object"})
 
@@ -410,12 +590,14 @@ def test_frontend_restores_isolated_followups_after_backend_restart(frontend, tm
             page.locator("#send").click()
             expect(page.locator(".message.assistant").last.locator(".message-text")).to_have_text(f"Observation pour {user_id}-test.")
             expect(page.locator(".message-state").last).to_have_text("")
+            timestamps[user_id] = page.locator(".message time").all_text_contents()
         restarted = create_app("ingress", verify_admin=verify_admin, data_dir=directory)
         active["client"] = stack.enter_context(TestClient(restarted, client=(SUPERVISOR_ADDRESS, 12345)))
         for user_id in ("alice", "bob"):
             active["user"] = user_id
             page.reload()
             expect(page.locator(".message")).to_have_count(2)
+            expect(page.locator(".message time")).to_have_text(timestamps[user_id])
             page.locator("#question").fill("Pourquoi ?")
             page.locator("#send").click()
             expect(page.locator(".message")).to_have_count(4)

@@ -1,6 +1,9 @@
+import asyncio
 import json
+import logging
 import os
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -9,17 +12,18 @@ from starlette.requests import HTTPConnection
 
 from .conversations import ConversationAgentFactory, ConversationRunner, ConversationStore
 from .ha_auth import verify_ingress_admin
-from .ha_mcp import HomeAssistantMCP
+from .ha_mcp import HomeAssistantMCP, MCPConnectionError, MCPToolDenied
 from .models import ModelConfig, ModelRegistry
 from .oauth import OAuthConfig
 from .oauth_flow import SESSION_COOKIE, OAuthFlow
-from .redaction import protect_logs, redact_data
+from .redaction import log_failure, protect_logs, redact_data
 from .storage import ModelConfigStore, PrivateDatabase, SecretStore
 
 FRONTEND = Path(__file__).parent / "frontend" / "index.html"
 BRAND_LOGO = Path(__file__).parent / "frontend" / "brand-logo.png"
 SUPERVISOR_ADDRESS = "172.30.32.2"
 SECRET_NAMES = frozenset({"home_assistant", "gemini", "openai", "anthropic"})
+_LOGGER = logging.getLogger(__name__)
 
 
 class AccessMiddleware:
@@ -144,9 +148,45 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
 
     @application.get("/api/conversation")
     def get_conversation(request: Request) -> JSONResponse:
-        conversation = application.state.conversations.load(request.state.user_id)
+        conversation, version = application.state.conversations.snapshot(request.state.user_id)
         messages = conversation[0] if conversation else []
-        return JSONResponse({"messages": redact_data(messages, sensitive_values(request))}, headers={"Cache-Control": "no-store"})
+        inventory = conversation[1].get("inventory") if conversation else None
+        return JSONResponse(redact_data({"messages": messages, "inventory": inventory, "version": version}, sensitive_values(request)), headers={"Cache-Control": "no-store"})
+
+    @application.post("/api/conversation/inventory")
+    async def initialize_inventory(request: Request) -> JSONResponse:
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict) or set(payload) != {"version"} or type(payload["version"]) is not int or payload["version"] < 0:
+                raise ValueError
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "Version de conversation invalide"}, status_code=400, headers={"Cache-Control": "no-store"})
+        user_id = request.state.user_id
+        conversation, version = application.state.conversations.snapshot(user_id)
+        messages, context = conversation if conversation else ([], {})
+        if payload["version"] != version:
+            return JSONResponse({"detail": "La conversation a changé ; rechargez-la.", "code": "conversation_changed"}, status_code=409, headers={"Cache-Control": "no-store"})
+        if context.get("inventory") is not None:
+            return JSONResponse(redact_data({"inventory": context["inventory"], "version": version}, sensitive_values(request)), headers={"Cache-Control": "no-store"})
+        if messages:
+            return JSONResponse({"detail": "La conversation a déjà commencé.", "code": "conversation_changed"}, status_code=409, headers={"Cache-Control": "no-store"})
+        if application.state.mcp is None:
+            return JSONResponse({"detail": "Connexion Home Assistant non configurée ; vérifiez les paramètres de l'app.", "code": "missing_connection"}, status_code=503, headers={"Cache-Control": "no-store"})
+        if not application.state.secrets.get(user_id, "home_assistant"):
+            return JSONResponse({"detail": "Enregistrez votre jeton Home Assistant dans la configuration, puis réessayez.", "code": "missing_token"}, status_code=503, headers={"Cache-Control": "no-store"})
+        try:
+            async with asyncio.timeout(40):
+                inventory = await application.state.mcp.inventory_for(user_id)
+        except MCPToolDenied as error:
+            log_failure(_LOGGER, "conversation.inventory", error)
+            return JSONResponse({"detail": "Outil de liste VTherm absent ou ambigu ; vérifiez les API MCP exposées.", "code": "missing_tool"}, status_code=502, headers={"Cache-Control": "no-store"})
+        except (MCPConnectionError, TimeoutError) as error:
+            log_failure(_LOGGER, "conversation.inventory", error)
+            return JSONResponse({"detail": "Lecture de l'inventaire impossible ; vérifiez la connexion MCP et le jeton, puis réessayez.", "code": "mcp_error"}, status_code=502, headers={"Cache-Control": "no-store"})
+        inventory = redact_data(inventory, sensitive_values(request))
+        if not application.state.conversations.save_if_version(user_id, version, messages, {**context, "inventory": inventory}):
+            return JSONResponse({"detail": "La conversation a changé ; rechargez-la.", "code": "conversation_changed"}, status_code=409, headers={"Cache-Control": "no-store"})
+        return JSONResponse({"inventory": inventory, "version": version + 1}, headers={"Cache-Control": "no-store"})
 
     @application.post("/api/conversation")
     async def send_question(request: Request) -> Response:
@@ -154,15 +194,23 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
             return JSONResponse({"detail": "Connexion Home Assistant non configurée"}, status_code=503, headers={"Cache-Control": "no-store"})
         try:
             payload = await request.json()
-            if not isinstance(payload, dict) or set(payload) != {"question"} or not isinstance(payload["question"], str) or not payload["question"].strip() or len(payload["question"]) > 4000:
+            if not isinstance(payload, dict) or "question" not in payload or set(payload) - {"question", "created_at"} or not isinstance(payload["question"], str) or not payload["question"].strip() or len(payload["question"]) > 4000:
                 raise ValueError
+            sent_at = None
+            if "created_at" in payload:
+                if not isinstance(payload["created_at"], str) or len(payload["created_at"]) > 64:
+                    raise ValueError
+                sent_at = datetime.fromisoformat(payload["created_at"])
+                if sent_at.tzinfo is None:
+                    raise ValueError
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
             return JSONResponse({"detail": "Question invalide"}, status_code=400, headers={"Cache-Control": "no-store"})
         user_id = request.state.user_id
         secrets = sensitive_values(request)
 
         async def events():
-            async for event in application.state.conversation_runner.respond(user_id, payload["question"], secrets):
+            arguments = (user_id, payload["question"], secrets) if sent_at is None else (user_id, payload["question"], secrets, sent_at)
+            async for event in application.state.conversation_runner.respond(*arguments):
                 yield json.dumps(event, ensure_ascii=False) + "\n"
 
         return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
@@ -171,6 +219,14 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
     def new_conversation(request: Request) -> Response:
         application.state.conversations.delete(request.state.user_id)
         return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+    @application.get("/api/models")
+    async def get_models(request: Request, provider: str) -> JSONResponse:
+        try:
+            payload = await application.state.models.catalog_for(request.state.user_id, provider)
+        except ValueError:
+            return JSONResponse({"detail": "Fournisseur invalide"}, status_code=400, headers={"Cache-Control": "no-store"})
+        return JSONResponse(redact_data(payload, sensitive_values(request)), headers={"Cache-Control": "no-store"})
 
     @application.get("/api/model")
     def get_model(request: Request) -> JSONResponse:

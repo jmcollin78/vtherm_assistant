@@ -3,6 +3,7 @@ import logging
 import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import closing
+from datetime import datetime, timezone
 from typing import Any
 
 from google.adk.agents import Agent
@@ -162,7 +163,7 @@ class ConversationRunner:
         self.store = store
         self.running: set[str] = set()
 
-    async def respond(self, user_id: str, question: str, secrets: list[str]) -> AsyncIterator[dict[str, Any]]:
+    async def respond(self, user_id: str, question: str, secrets: list[str], sent_at: datetime | None = None) -> AsyncIterator[dict[str, Any]]:
         if not user_id or not question.strip() or len(question) > 4000:
             yield {"type": "error", "message": "Question invalide."}
             return
@@ -170,12 +171,14 @@ class ConversationRunner:
             yield {"type": "error", "message": "Une réponse est déjà en cours."}
             return
         self.running.add(user_id)
+        question_time = (sent_at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
         stage = "load_conversation"
         try:
             conversation, version = self.store.snapshot(user_id)
             messages, context = conversation if conversation else ([], {})
             safe_question = redact_data(question.strip(), secrets)
             safe_messages = redact_data(messages, secrets)
+            yield {"type": "timestamp", "role": "user", "created_at": question_time}
             selected = []
             remaining = 24000
             for message in reversed(safe_messages):
@@ -210,6 +213,7 @@ class ConversationRunner:
             runner = Runner(app_name="vtherm", agent=agent, session_service=sessions)
             response = ConversationResponse(agent.name, secrets)
             answer = ""
+            response_time = None
             stage = "stream"
             async for event in runner.run_async(
                 user_id=user_id, session_id=session.id,
@@ -218,12 +222,17 @@ class ConversationRunner:
             ):
                 fragment = response.accept(event)
                 if fragment:
+                    if response_time is None:
+                        response_time = datetime.now(timezone.utc).isoformat()
                     answer += fragment
-                    yield {"type": "delta", "text": fragment}
+                    yield {"type": "delta", "text": fragment, "created_at": response_time}
             stage = "finalize"
             response.finish()
             stage = "save_conversation"
-            updated = safe_messages + [{"role": "user", "text": safe_question}, {"role": "assistant", "text": answer}]
+            updated = safe_messages + [
+                {"role": "user", "text": safe_question, "created_at": question_time},
+                {"role": "assistant", "text": answer, "created_at": response_time},
+            ]
             saved_session = await sessions.get_session(app_name="vtherm", user_id=user_id, session_id=session.id)
             saved_events = []
             for event in saved_session.events:

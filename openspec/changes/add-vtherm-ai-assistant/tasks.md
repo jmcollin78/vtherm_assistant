@@ -51,6 +51,8 @@ Vérifications manquantes lors de la revue initiale :
 - [ ] 4.7 Limiter le contexte et l'historique transmis selon la capacité du modèle et signaler les données tronquées ; tester les limites, la préservation des éléments nécessaires et l'absence d'envoi superflu.
 - [x] 4.8 Vérifier pour Gemini, OpenAI, Claude et Ollama le parcours conversationnel en streaming utilisé par l'app avec les adaptateurs installés ; ajouter des tests simulés reproductibles couvrant réponse simple, préambule puis appel d'outil et conclusion, appels d'outils successifs, interruption et erreur ; vérifier l'absence de duplication, l'événement de fin et la sauvegarde uniquement en cas de réponse complète. Distinguer ces tests de la matrice de compatibilité réelle de 4.6.
 
+- [x] 4.9 Ajouter le catalogue de modèles par fournisseur via le backend et les API officielles, avec paramètres personnels enregistrés, liste des modèles installés sur Ollama, suggestions prédéfinies identifiées en secours et saisie manuelle. Tester pagination, récupération incomplète, chargement, liste vide, identifiants absents, échecs sans secrets, isolation du cache et réponses tardives après changement de fournisseur ; conserver le modèle configuré et distinguer disponibilité, suggestions et compatibilité vérifiée, sans génération ni installation implicite.
+
 ## 5. MCP officiel et lecture seule
 
 - [x] 5.1 Connecter le backend au seul serveur MCP officiel HA avec un jeton administrateur protégé ; tester l'authentification, les erreurs et la reconnexion sans présumer d'une délégation des droits ingress.
@@ -85,6 +87,9 @@ Vérifications manquantes lors de la revue initiale :
 - [x] 7.8 Effacer les champs de clé fournisseur et de jeton HA lors de la sortie de configuration, y compris via une nouvelle conversation, et après chaque tentative d'enregistrement, réussie ou non ; tester aussi les rejets réseau et vérifier qu'aucun secret saisi n'est conservé dans les champs masqués ou recopié dans les messages d'erreur.
 - [x] 7.9 Gérer explicitement les erreurs réseau des actions de configuration et de suppression, ainsi que le chargement de la configuration et la nouvelle conversation ; afficher un message exploitable sans secret, permettre une nouvelle tentative et ne pas annoncer un succès ni effacer la conversation affichée si la suppression serveur échoue ; tester les réponses HTTP d'échec et les rejets de requêtes avec les contrôles utilisables après l'erreur.
 
+- [x] 7.10 Ajouter la date et l'heure en petits caractères avant « Vous » et « Assistant », avec instants conservés en UTC et formatage dans la langue et le fuseau du navigateur. Tester envoi de question, premier fragment de réponse et stabilité pendant le streaming, navigation, rechargement, redémarrage, changement de fuseau, changements d'heure et messages anciens sans date connue ; vérifier lisibilité sur ordinateur et mobile sans date inventée.
+- [x] 7.11 Ajouter l'inventaire déterministe des VTherm au début de la première conversation vierge et de chaque nouvelle conversation, avant la première question, via le seul outil MCP de liste autorisé et le jeton personnel. Afficher compte, noms et identifiants climate ; tester exposition et droits, absence de clé fournisseur, chargement, liste vide, jeton absent, outil manquant, erreurs sûres et relance, conservation de l'inventaire initial et de son instant sans doublon à la restauration, suppression et isolation entre utilisateurs. Ne pas utiliser le modèle ni modifier l'exposition ou HA ; tester aussi les réponses tardives d'une conversation remplacée et l'affichage ordinateur/mobile.
+
 ## 8. Déploiement et vérification intégrée
 
 - [ ] 8.1 Préparer l'app HA OS avec ingress et l'accès optionnel à la barre latérale ; vérifier l'installation, les chemins relatifs et l'accès sans carte de tableau de bord.
@@ -113,3 +118,19 @@ Ce lot ne clôt ni la compatibilité réelle des modèles de 4.6, ni les vérifi
 - Reprise : preuves MCP masquées sauvegardées avec les événements utiles à la conversation, sans fragments partiels ni parties de raisonnement interne ; tests navigateur reliés au backend recréé sur le même stockage, isolation de deux utilisateurs et effacement par nouvelle conversation. L'identification HA et les fournisseurs restent simulés dans ces essais.
 - Limite toujours ouverte en 4.7 : la borne actuelle sur les messages ne borne pas les résultats d'outils ; la limitation du contexte selon le modèle reste à implémenter.
 - La validation de 4.6 nécessite les modèles et environnements réels à tester ; les tâches MCP, historique et déploiement non cochées ne sont pas validées par ce lot.
+
+## Révision d'affichage validée le 2026-11-08
+
+- Règles validées par l'utilisateur : horodatages dans la langue et le fuseau du navigateur, catalogue de modèles dynamique avec secours et saisie manuelle, inventaire MCP au début d'une nouvelle conversation sans doublon à la restauration.
+- Tâches ajoutées et non implémentées : 4.9, 7.10 et 7.11. Les tâches déjà cochées restent inchangées ; ces nouveaux comportements ne sont pas couverts par leur validation antérieure.
+- Avancement après ajout : 34 sur 55 tâches. Cette révision concerne uniquement les artefacts de planification ; aucun code, déploiement ou publication n'est effectué.
+
+## Implémentation du lot d'affichage du 2026-11-08
+
+- Tâches 4.9, 7.10 et 7.11 terminées ; avancement : 37 sur 55. Les autres tâches ouvertes conservent leurs critères et limites de validation réelle.
+- Dates : instants UTC ajoutés aux messages JSON sans inventer ceux de l'historique ancien ; question horodatée à l'envoi et réponse au premier fragment affichable. Tests de route, streaming, reprise après redémarrage, trois locales/fuseaux, changement d'heure et nouveau fuseau de reprise sur ordinateur/mobile.
+- Catalogue : GET officiels des quatre fournisseurs, identifiants personnels enregistrés, pagination bornée et récupération partielle signalée ; pas de cache partagé, de génération ou d'installation. Suggestions documentées et saisie manuelle conservée. Tests d'erreurs sans secrets, clés/URL remplacées, isolation et réponses tardives ; disponibilité distincte de la compatibilité réelle toujours ouverte en 4.6.
+- Inventaire : lecture MCP autorisée, noms et identifiants affichés sans HTML externe, compte validé, résultat vide distinct d'une erreur ; sauvegarde protégée avec la version de conversation, reprise sans doublon et refus des résultats après suppression. Tests de droits, jeton absent sans substitution Supervisor, outil manquant, absence de génération, erreurs, relance, isolation et affichage ordinateur/mobile.
+- Commandes : `arch -arm64 .venv/bin/python -m pytest -q --ignore=tests/test_frontend.py --ignore=tests/test_packaging.py --tb=short` : 253 tests réussis ; `arch -arm64 .venv/bin/python -m pytest -q tests/test_frontend.py tests/test_packaging.py --tb=short` : 92 réussis et 12 contrôles Docker ignorés sans image de test. Total : 345 réussites ; avertissements de dépendances distincts des échecs.
+- Captures Playwright temporaires inspectées pour les dates, l'inventaire et le catalogue sur ordinateur/mobile ; logo chargé et absence de débordement horizontal vérifiés. Ces preuves utilisent des services simulés, sans lecture de conversations privées ni essai des nouveaux parcours sur HA OS réel.
+- Aucun changement d'exposition, de chauffage, de version publiée, de catalogue public ou d'image de release. Les tags `0.1.0` et `0.1.1` restent inchangés.

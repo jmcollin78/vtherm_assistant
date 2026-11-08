@@ -95,8 +95,11 @@ applicatif utilise le Python ARM64 du venv sur macOS Apple Silicon.
 2. Dans les paramètres de l'assistant, enregistrer le fournisseur, le modèle,
 	sa clé éventuelle et le jeton HA. Saisir les secrets uniquement dans les
 	champs prévus, jamais dans la conversation ou dans les fichiers du dépôt.
-3. Demander « Quels thermostats sont disponibles ? », puis l'état et un
-	diagnostic d'un thermostat précis. Comparer les résultats aux entités HA.
+3. Commencer une nouvelle conversation et vérifier l'inventaire initial des
+	VTherm interrogeables, lu par MCP sans solliciter le modèle. Demander ensuite
+	l'état et un diagnostic d'un thermostat précis et comparer les résultats aux
+	entités HA. Une liste vide et un échec de lecture sont distingués ; une
+	lecture impossible peut être relancée après correction du jeton ou de MCP.
 4. Modifier une donnée simulée dans HA et redemander l'état actuel : la réponse
 	doit refléter la nouvelle valeur, pas seulement la conversation passée.
 5. Arrêter et relancer l'application, se reconnecter et vérifier la reprise
@@ -104,6 +107,13 @@ applicatif utilise le Python ARM64 du venv sur macOS Apple Silicon.
 	et le contexte, sans supprimer les identifiants enregistrés.
 6. Vérifier également le refus d'un compte non administrateur et le message
 	d'erreur lorsque HA est indisponible, puis la possibilité de réessayer.
+
+Les questions et réponses affichent leur date et heure avant l'auteur, dans
+la langue et le fuseau du navigateur. Les instants d'envoi et de premier
+fragment sont conservés lors de la reprise ; les messages anciens sans date
+connue restent sans horodatage inventé. L'inventaire initial est conservé avec
+la conversation, sans doublon à la restauration : il décrit les accès au
+moment de son obtention, pas une garantie d'accessibilité actuelle.
 
 Un avertissement de certificat nécessite d'approuver l'autorité locale, sans
 désactiver les vérifications HTTPS. Une erreur `502` sur le proxy HA indique
@@ -145,6 +155,27 @@ Ce parcours ne garantit pas encore la compatibilité des versions testées :
 consigner les résultats et les éventuels écarts. L'historique détaillé dépend
 d'un outil encore à réaliser ; la limitation du contexte reste à compléter.
 Commencer avec des conversations courtes et l'installation de test isolée.
+
+## Catalogue de modèles
+
+Le formulaire propose les modèles retournés par l'API officielle du fournisseur,
+ou les modèles installés sur le serveur Ollama enregistré. La récupération se
+fait au backend avec les identifiants personnels enregistrés, sans envoyer de
+conversation ou de données HA ni lancer de génération ou d'installation.
+Elle n'utilise pas de cache partagé ; un changement de clé ou d'URL s'applique
+à la lecture suivante. Une pagination interrompue est signalée comme incomplète.
+
+Sans paramètres enregistrés ou si le fournisseur est inaccessible, des suggestions
+prédéfinies sont proposées : OpenAI `gpt-6-luna`, `gpt-4.1`, `gpt-4.1-mini` ;
+Anthropic `claude-sonnet-4-5`, `claude-haiku-4-5` ; Gemini `gemini-2.5-flash`,
+`gemini-2.5-pro` ; Ollama `qwen3`, `llama3.1`. Elles ne garantissent ni l'accès
+du compte ni une installation Ollama. La saisie manuelle reste possible et le
+modèle enregistré n'est jamais remplacé automatiquement.
+
+Le catalogue marque ces modèles comme non vérifiés : leur disponibilité ne
+prouve pas la compatibilité des appels d'outils ou du streaming avec les
+adaptateurs de l'assistant. La matrice réelle des générations et capacités
+reste à valider dans la tâche OpenSpec 4.6 ; les tests de catalogue sont simulés.
 
 ## Identification
 
