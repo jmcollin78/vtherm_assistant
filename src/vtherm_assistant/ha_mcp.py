@@ -36,6 +36,14 @@ READ_ONLY_TOOL_DEFINITIONS = {
         {"type": "object", "properties": {"entity_id": {"type": "string"}}, "required": ["entity_id"]},
     ),
 }
+READ_ONLY_TOOL_DEFINITIONS.update({
+    f"assist__{name}": READ_ONLY_TOOL_DEFINITIONS[name]
+    for name in (
+        "versatile_thermostat__list_vtherms",
+        "versatile_thermostat__get_status",
+        "versatile_thermostat__diagnose",
+    )
+})
 READ_ONLY_TOOLS = frozenset(READ_ONLY_TOOL_DEFINITIONS)
 
 

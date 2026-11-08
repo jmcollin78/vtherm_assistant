@@ -184,7 +184,11 @@ Le backend refuse les connexions qui ne proviennent pas du Supervisor et
 vérifie les droits de l'utilisateur auprès de Home Assistant. Le lancement
 doit passer par `python -m vtherm_assistant`, qui désactive l'interprétation
 des en-têtes de proxy pour conserver l'adresse du client réseau réel. Le
-paquet d'installation HA OS n'est pas encore disponible.
+catalogue expérimental utilise la branche de distribution dédiée :
+`https://github.com/jmcollin78/vtherm_assistant#ha-app`.
+L'image `0.1.0` est publique pour aarch64 et amd64, avec téléchargements anonymes
+vérifiés. Le chargement Supervisor et l'installation HA OS restent à valider
+après accord ; ne pas ajouter le dépôt source sans le suffixe `#ha-app`.
 
 La construction Linux, les dépendances figées et les essais avec volumes
 temporaires sont décrits dans le [guide de construction](docs/ha-app-build.md).

@@ -6,7 +6,12 @@ App experimentale pour Home Assistant OS, integree par ingress et reservee
 aux administrateurs. Elle utilise les outils MCP de lecture autorises pour
 les diagnostics VTherm. Aucun port hote ni carte de tableau de bord a ajouter.
 
-Le catalogue et l'image GHCR de cette version ne sont pas encore publies.
+Catalogue experimental :
+`https://github.com/jmcollin78/vtherm_assistant#ha-app`
+
+L'image GHCR `0.1.0` est publique pour aarch64 et amd64 ; les telechargements
+anonymes des deux architectures sont verifies. Le chargement du catalogue
+par un vrai Supervisor et l'installation restent a verifier apres accord.
 Ne pas ajouter le depot source brut comme catalogue : il contient aussi des
 fichiers OpenSpec que Supervisor pourrait interpreter comme une autre app.
 

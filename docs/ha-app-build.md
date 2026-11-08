@@ -134,7 +134,74 @@ Playwright/asyncio ; les executions separees sont la procedure validee.
 Ce bilan couvre les simulations d'authentification, mutations, isolation,
 outils MCP interdits, secrets et erreurs fournisseur ; il ne prouve pas une
 session Supervisor reelle ni une lecture ou restauration sur HA principal.
-Le workflow n'a pas encore ete pousse ni execute sur GitHub.
+Le workflow a depuis ete pousse par l'utilisateur. L'API GitHub confirme
+la reussite du [run 42423430156](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42423430156)
+sur la revision source `bcb01602992bdcd9aa9b4b92b0229dd7c645f644`.
+
+## Release 0.1.0
+
+Le 2026-11-08, apres accord explicite, l'image
+`ghcr.io/jmcollin78/vtherm-assistant:0.1.0` a ete publiee puis rendue publique.
+Digest de l'index multiarchitecture :
+`sha256:1e706799da51a80d83cf39f32ed14123177d541978dc6be01dc0d5878fbeea8d`.
+
+Les 12 tests Docker des images de release ont reussi. Les manifests arm64
+et amd64 publies correspondent aux images testees ; les labels version,
+source et revision sont verifies. Les pulls avec une configuration Docker
+sans identifiants reussissent. Pour exclure un faux succes lie au cache local,
+chaque configuration et chaque couche des deux plateformes a aussi ete
+telechargee directement via le registre anonyme, avec taille et SHA-256 verifies.
+
+Le catalogue a ensuite ete publie dans la branche `ha-app`, au commit
+`5cc3de833d08c81c4f125d76be02ecad90384888`. L'acces public GitHub confirme
+exactement les neuf fichiers attendus, identiques au catalogue valide ;
+aucun fichier OpenSpec ou source applicative n'est distribue.
+La branche source reste sur sa revision initiale ; les mises a jour locales
+de documentation et du suivi OpenSpec ne sont pas commitees sur cette branche.
+
+La distribution utilise uniquement la branche `ha-app`. Adresse a ajouter
+dans la boutique, en conservant le suffixe :
+`https://github.com/jmcollin78/vtherm_assistant#ha-app`.
+Le parseur Git du Supervisor accepte ce suffixe de branche. Le chargement
+sur l'instance HA principale est maintenant confirme par l'utilisateur et
+ses captures du 2026-11-08 : le catalogue VTherm Assistant apps presente
+uniquement Assistant VTherm, la fiche indique `0.1.0` et le stade experimental.
+Aucune fausse app OpenSpec n'est visible dans ce catalogue.
+
+Versions relevees par l'utilisateur :
+
+| Composant | Version ou methode |
+| --- | --- |
+| Installation | Home Assistant OS |
+| Core | 2026.10.4 |
+| Supervisor | 2026.10.5 |
+| Operating System | 18.4 |
+| Interface utilisateur | 20260930.5 |
+| Architecture du conteneur | amd64 |
+| Versatile Thermostat | 10.6.3 |
+
+L'architecture amd64 est declaree par l'app et dispose d'une image publique
+testee. La version VTherm est confirmee par la capture utilisateur. L'accord
+explicite d'ajout du catalogue et d'installation experimentale a ete donne.
+
+Le 2026-11-08, l'utilisateur confirme l'installation reussie de `0.1.0`,
+l'option `ha_internal_url` a `http://homeassistant:8123`, la presence de
+l'icone dans la barre laterale et l'ouverture de la page de conversation.
+Ces observations confirment le demarrage et l'acces par le vrai ingress.
+
+Le controle administrateur est corrobore par le chemin serveur existant :
+en ingress, `AccessMiddleware` protege toutes les routes, y compris la page
+HTML et `GET /api/conversation`. Leur acces exige la provenance Supervisor,
+une identite unique et un resultat positif de `verify_ingress_admin`, via
+`ws://supervisor/core/websocket` et `config/auth/list`. L'ouverture reussie
+confirme cette chaine pour le compte courant ; aucune trace reseau brute
+n'a ete collectee et cela ne prouve pas encore le refus d'un autre compte.
+
+Aucune mise a jour HA/VTherm, modification de chauffage ou d'exposition
+d'entites n'a ete requise pour ce parcours. La lecture MCP, le streaming,
+la persistance apres redemarrage/mise a jour, l'isolation reelle des comptes,
+les erreurs et les essais de sauvegarde restent a verifier. Le stade reste
+experimental ; ce releve ne certifie pas la compatibilite complete.
 
 ## Publication apres confirmation
 
@@ -153,10 +220,11 @@ Ces etapes sont un jalon distinct, pas une autorisation de les executer :
 	transmettre de jeton a l'assistant. Une CI de publication future exige
 	`packages: write` et une approbation explicite, absents du workflow actuel.
 4. Publier l'image pour les deux architectures, avant tout catalogue. Par
-	exemple, uniquement apres accord et validation du nouveau tag :
+	exemple, uniquement apres accord et validation du nouveau tag ; `VERSION`
+	doit contenir cette nouvelle version, jamais `0.1.0` deja publiee :
 
 ```sh
-docker buildx build --platform linux/arm64,linux/amd64 --push -t ghcr.io/jmcollin78/vtherm-assistant:0.1.0 .
+docker buildx build --platform linux/arm64,linux/amd64 --push -t "ghcr.io/jmcollin78/vtherm-assistant:${VERSION:?definir une nouvelle version validee}" .
 ```
 
 5. Rendre le package GHCR public dans ses reglages. Avec une configuration
@@ -178,3 +246,8 @@ Pour chaque mise a jour : nouvelle version immutable, validation, sauvegarde
 de l'app apres accord, image publique d'abord, catalogue ensuite. Aucun changement
 du chauffage, Recorder, Core ou OS n'est inclus. Installation, mise a jour et
 restauration sur HA principal demandent chacune leur confirmation appropriee.
+
+Pour les publications suivantes, partir d'un clone de la branche `ha-app` afin
+de conserver son historique. Generer un nouveau catalogue valide, actualiser
+uniquement ses neuf fichiers publics puis pousser sans force. Ne pas fusionner
+la branche source dans `ha-app`, ce qui reintroduirait les fichiers OpenSpec.

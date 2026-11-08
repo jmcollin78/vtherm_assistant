@@ -16,12 +16,17 @@ Le packaging HA Container autonome est hors de ce lot.
 
 ## Installation et barre laterale
 
-Le catalogue et l'image de cette version ne sont pas encore publies. Apres
-publication et accord pour l'installation :
+Catalogue experimental :
+`https://github.com/jmcollin78/vtherm_assistant#ha-app`
+
+L'image `0.1.0` est publique ; son telechargement anonyme est verifie pour
+aarch64 et amd64. Le chargement par un vrai Supervisor et l'installation
+restent a verifier. Pour un essai apres accord pour l'installation :
 
 1. Dans Parametres > Apps > Boutique d'apps > Depots, ajouter l'URL du catalogue
-   propre indiquee dans la release. Ne pas ajouter le depot source brut qui
-   contient `openspec/config.yaml`.
+   ci-dessus, en conservant le suffixe `#ha-app`. Ne pas ajouter le depot source
+   brut qui contient `openspec/config.yaml`. Verifier que seule l'app Assistant
+   VTherm est detectee ; ne pas poursuivre si une autre app apparait.
 2. Choisir Assistant VTherm, verifier la version experimentale et l'architecture,
    puis installer l'image preconstruite. Ne pas compiler sur HA principal.
 3. Verifier l'option d'adresse Core, demarrer l'app et activer son affichage
@@ -33,6 +38,18 @@ publication et accord pour l'installation :
 L'app ne demande ni montage de configuration HA, acces Docker, materiel,
 reseau hote ni role administrateur Supervisor. L'acces a l'API Core sert a
 verifier les droits et ne remplace pas le jeton utilisateur MCP.
+
+## Mises a jour
+
+Chaque release utilise un nouveau tag immutable, identique a la version
+du manifeste. L'image publique est verifiee avant la mise a jour du catalogue
+`ha-app` ; ne jamais remplacer le contenu d'un tag deja distribue.
+
+Lire le changelog et les precautions de compatibilite du stockage. Apres accord,
+sauvegarder uniquement cette app, actualiser le catalogue dans la boutique,
+puis confirmer la mise a jour d'Assistant VTherm. Verifier sa version,
+l'ouverture ingress, les reglages et la reprise de la conversation.
+Ne pas mettre a jour HA ou VTherm pour satisfaire un essai sans accord distinct.
 
 ## Configuration
 
