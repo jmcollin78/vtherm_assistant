@@ -1,162 +1,161 @@
-# Assistant VTherm : exploitation HA OS
+# VTherm Assistant: Home Assistant OS Operations
 
-## Prerequisites et compatibilite
+This documentation describes release `1.0.0` and its latest features. The app
+opens through ingress and is restricted to HA administrators. It uses only the
+official Home Assistant MCP server; it requires no host port or dashboard card.
 
-Utiliser Home Assistant OS avec Supervisor, un compte administrateur actif,
-le serveur MCP officiel configure et une integration Versatile Thermostat qui
-fournit les outils VTherm attendus. Verifier les entites exposees au MCP ;
-n'exposer que les donnees choisies, jamais toute l'instance automatiquement.
-L'assistant est limite aux outils de lecture autorises, sans commande de chauffage.
+## Features and Limitations
 
-HA 2026.10 et VTherm 10.6.3 sont des cibles a verifier, pas des compatibilites
-deja prouvees. Les images Linux aarch64 et amd64, imports, ressources, stockage
-et arret sont testes localement ; ingress, droits Supervisor et streaming
-reel restent a verifier sur HA OS. Le test amd64 local utilise l'emulation.
-Le packaging HA Container autonome est hors de ce lot.
+The assistant dynamically discovers all VTherm tools announced by the MCP
+server whose schemas it accepts, for both reads and writes. It can read a
+VTherm climate's state and diagnosis, published algorithm information, plugins,
+history, and logs, as well as linked entity states, when the HA/VTherm versions
+and configuration publish them. History requests are limited to 14 days and
+results are bounded. Plugins, history, and logs are available only when the
+VTherm version and MCP configuration expose them. The assistant distinguishes
+observations from hypotheses; it cannot guarantee a failure's cause or freely
+change internal algorithm settings.
 
-## Installation et barre laterale
+Discovered VTherm write tools can change actions exposed by the integration,
+for example HVAC mode, target temperature, a preset, or on/off state. The list
+varies by version and thermostat. No generic Home Assistant write tool is
+allowed.
 
-Catalogue experimental :
-`https://github.com/jmcollin78/vtherm_assistant#ha-app`
+The assistant can also search the official online VTherm documentation at
+[versatile-thermostat.org](https://www.versatile-thermostat.org/). Search is
+available in French, English, and German and returns targeted excerpts with
+source-page links; it does not browse the entire site without limits.
 
-L'image `0.1.0` est publique ; son telechargement anonyme est verifie pour
-aarch64 et amd64. Le chargement par un vrai Supervisor et l'installation
-restent a verifier. Pour un essai apres accord pour l'installation :
+**Every write requires separate, mandatory approval in advance.** The UI shows
+the tool name, target VTherm, and exact arguments. A request in the conversation
+is not approval. A rejected, ambiguous, or expired request is not executed.
+After approval, the app reports the actual MCP result. Always verify the state
+and effect in Home Assistant: approval or a response does not guarantee that
+the heating behaves as intended.
 
-1. Dans Parametres > Apps > Boutique d'apps > Depots, ajouter l'URL du catalogue
-   ci-dessus, en conservant le suffixe `#ha-app`. Ne pas ajouter le depot source
-   brut qui contient `openspec/config.yaml`. Verifier que seule l'app Assistant
-   VTherm est detectee ; ne pas poursuivre si une autre app apparait.
-2. Choisir Assistant VTherm, verifier la version experimentale et l'architecture,
-   puis installer l'image preconstruite. Ne pas compiler sur HA principal.
-3. Verifier l'option d'adresse Core, demarrer l'app et activer son affichage
-   dans la barre laterale. Ouvrir l'interface Web ou Assistant VTherm dans
-   cette barre ; aucun port externe, certificat propre ou carte n'est necessaire.
-4. Verifier la session administrateur HA. Un refus ingress ne propose pas OAuth :
-   verifier les droits et le passage par Supervisor, pas un acces IP direct.
+## Prerequisites and Installation
 
-L'app ne demande ni montage de configuration HA, acces Docker, materiel,
-reseau hote ni role administrateur Supervisor. L'acces a l'API Core sert a
-verifier les droits et ne remplace pas le jeton utilisateur MCP.
+Use Home Assistant OS with an active administrator account, a configured MCP
+server, and a working Versatile Thermostat integration. Target VTherm climate
+entities must be exposed to Assist to appear in the inventory. Expose only the
+entities you need.
 
-## Mises a jour
+Repository: `https://github.com/jmcollin78/vtherm_assistant#ha-app`.
 
-Chaque release utilise un nouveau tag immutable, identique a la version
-du manifeste. L'image publique est verifiee avant la mise a jour du catalogue
-`ha-app` ; ne jamais remplacer le contenu d'un tag deja distribue.
+1. In **Settings > Apps > App Store > Repositories**, add the repository URL
+   above, including the `#ha-app` suffix.
+2. Install **VTherm Assistant** (release `1.0.0`), start it, and enable its
+   sidebar entry.
+3. Open the app through ingress with an HA administrator account.
 
-Lire le changelog et les precautions de compatibilite du stockage. Apres accord,
-sauvegarder uniquement cette app, actualiser le catalogue dans la boutique,
-puis confirmer la mise a jour d'Assistant VTherm. Verifier sa version,
-l'ouverture ingress, les reglages et la reprise de la conversation.
-Ne pas mettre a jour HA ou VTherm pour satisfaire un essai sans accord distinct.
+The app does not require Docker access, a mount of the HA configuration, or
+additional Supervisor privileges. The Core API verifies identity and access
+rights; it does not replace the personal MCP token.
 
-## Configuration
+## Configure Home Assistant MCP
 
-Dans les options de l'app, `ha_internal_url` designe la base de Core depuis
-le conteneur, par defaut `http://homeassistant:8123`. Utiliser HTTP ou HTTPS
-sans chemin, identifiants, parametres ni fragment. Un port personnalise est
-accepte ; Core avec TLS demande une URL HTTPS et un certificat verifiable.
-Ne jamais placer un jeton dans cette URL ni desactiver la verification TLS.
-HTTP transmet les donnees et jetons en clair sur le reseau interne : utiliser
-uniquement un reseau de confiance, ou HTTPS.
+1. Go to **Settings > Devices & services > Add integration** and add
+   **Model Context Protocol**, Home Assistant's MCP server.
+2. Open the integration configuration and publish the VTherm APIs/tools needed
+   by the assistant. Enable only useful tool sets. The assistant accepts a
+   limited selection of HA reads and VTherm tools identified by their MCP
+   namespaces.
+3. In Assist's exposed-entities settings, expose only the VTherm climates the
+   assistant should discover.
+4. For history, make sure Recorder retained the requested period. Missing data
+   does not prove that no event occurred.
 
-Supervisor fournit `/data/options.json` avant le chargement du backend.
-Ces options sont prioritaires sur l'environnement ; une valeur invalide,
-un fichier illisible ou absent sous Supervisor bloque le lancement sans
-afficher son contenu brut. Corriger les options puis redemarrer seulement l'app.
+API, tool, and option settings can vary by Home Assistant version. See the
+[official MCP documentation](https://www.home-assistant.io/integrations/mcp_server/).
+The app's internal Core URL is `ha_internal_url`, defaulting to
+`http://homeassistant:8123`. It must be a base HTTP or HTTPS URL with no path,
+credentials, query, or fragment. Never put a token in the URL. Over HTTP,
+tokens and data are sent in clear text on the internal network; use a trusted
+network or HTTPS with a verifiable certificate.
 
-Dans l'interface, chaque administrateur configure son modele, les cles du
-fournisseur et son jeton HA personnel administrateur pour MCP. Le jeton
-`SUPERVISOR_TOKEN`, fourni par HA au backend, sert uniquement au controle
-des droits Core et n'est jamais une cle MCP ni une cle de modele. Ne pas
-copier ces secrets dans les options globales, le manifeste ou les journaux.
+## Long-Lived Token
 
-Une erreur MCP exige de verifier son integration, l'adresse interne et le
-jeton personnel ; une erreur fournisseur exige de verifier le modele et
-la cle. Utiliser la verification de connexion et reessayer la question apres
-correction. Ne pas arreter HA ou le chauffage pour simuler une panne.
-Un rapport de bug ne doit contenir ni jeton, cle, archive ni conversation privee.
+Each administrator stores a personal MCP token in the app settings:
 
-## Donnees et confidentialite
+1. In Home Assistant, open your **user profile > Security**.
+2. Scroll to **Long-Lived Access Tokens**, select **Create Token**, and give it
+   a clear name, such as `VTherm Assistant`.
+3. Copy the token when it is created; it will not be shown again.
+4. In the assistant settings, paste it into the **Home Assistant token** field
+   and save.
 
-Les conversations, modeles et secrets de chaque administrateur restent dans
-`/data/vtherm-assistant/conversations.sqlite3`. Le repertoire est prive `0700`
-et la base `0600`, avec un proprietaire UID 0 stable. Le stockage mal protege
-est refuse sans reparation automatique. Le volume persiste apres redemarrage
-ou remplacement du conteneur ; aucune donnee du Mac n'est importee.
+The token must belong to an active administrator. It is separate from the
+ingress session and `SUPERVISOR_TOKEN`, which the app uses only to verify rights
+through Core. Never send any of these tokens in a conversation, bug report, or
+log. Revoke the token in the HA profile when it is no longer needed. See the
+[Home Assistant authentication documentation](https://www.home-assistant.io/docs/authentication/).
 
-Les jetons HA et cles fournisseur ne sont pas chiffres dans SQLite. Les
-sauvegardes qui contiennent cette base contiennent donc aussi ces secrets.
-Proteger les archives, leurs copies et les cles de recuperation ; ne jamais
-les joindre a un rapport de bug. Une sauvegarde exportee par l'interface HA
-est dechiffree lors du telechargement et doit etre traitee comme un secret.
+## Provider and Model
 
-## Sauvegarde de l'app
+In the app settings, choose Google Gemini, OpenAI, Anthropic Claude, or Ollama.
+Choose a model from the catalog or enter its ID manually. The catalog may show
+models returned by the provider or preset suggestions; `unverified` means
+tool-call and streaming compatibility has not been certified.
 
-Le manifeste utilise `backup: cold` : Supervisor arrete temporairement l'app
-pour sauvegarder sa base sans ecriture concurrente, puis la remet en route
-si elle fonctionnait. Les conversations en cours peuvent etre interrompues.
-Cela ne demande pas d'arreter Home Assistant ni le chauffage.
+For a remote provider, save the key in its dedicated field. For Ollama, enter
+a URL reachable from the app container and a model already installed on that
+server. After saving, test with a read-only question. The configured model is
+never replaced automatically by a suggestion.
 
-Avant une mise a jour, suppression de donnees ou desinstallation :
+## Privacy and Secrets
 
-1. Obtenir l'accord pour une sauvegarde et annoncer l'interruption de l'app.
-2. Dans Parametres > Systeme > Sauvegardes, creer une sauvegarde manuelle et
-   choisir uniquement Assistant VTherm. Verifier le contenu reel de l'archive ;
-   ne pas inclure les reglages Home Assistant, Recorder, autres apps ou dossiers
-   pour cet essai isole.
-3. Relever version de l'app et date. Verifier la fin de la sauvegarde et la
-   disponibilite de la cle du kit d'urgence si l'archive est chiffree, sans
-   transmettre cette cle a un assistant ou a un journal.
-4. Conserver un point de recuperation utilisable dans un emplacement choisi
-   et protege, puis verifier que l'app redemarre et retrouve ses donnees.
+The app stores conversations and MCP results needed for context in its local
+database. During generation, the conversation text and required results are
+sent to the selected model provider; that provider's policy determines how
+they are handled and retained. Redaction of known secrets cannot identify
+unknown private information.
 
-La creation de cette procedure n'est pas une validation de sauvegarde reelle.
+**Never enter an API key, username, password, token, callback code, sensitive
+private address, or any other secret in a conversation.** Enter secrets only
+in dedicated fields. Secrets stored in SQLite are not encrypted; protect any
+backup containing the database and never attach it to an issue or PR.
 
-## Restauration isolee et retour de version
+## Conversation Recovery
 
-Une restauration ecrase les conversations, reglages et secrets de l'app par
-ceux de l'archive. Les changements depuis sa date seront perdus. Une sauvegarde
-existante n'autorise pas automatiquement cette operation.
+The app saves the current conversation and context for each administrator.
+After an app restart or container replacement, it resumes the latest saved
+conversation. Past conversations are not archived: **New conversation** replaces
+that user's current session without deleting saved secrets. Interrupted
+responses are not saved as complete answers.
 
-1. Verifier que l'archive contient Assistant VTherm, sa version et ses donnees,
-   et que sa cle de dechiffrement est disponible. Verifier aussi que l'image
-   de cette version est encore accessible.
-2. Faire confirmer separement la restauration de cette app et la perte des
-   changements depuis l'archive. Sauvegarder son etat actuel avant de l'ecraser
-   si une autre recuperation pourrait etre necessaire.
-3. Choisir une restauration partielle et selectionner uniquement Assistant
-   VTherm et ses donnees. Ne pas selectionner les reglages HA, Recorder, autres
-   apps ou dossiers. Ne jamais lancer une restauration complete de HA pour
-   revenir sur cette app.
-4. Apres redemarrage de l'app, verifier sa version, ingress, les conversations,
-   le modele et la connexion MCP. Les jetons restaures peuvent avoir ete revoques
-   ou avoir expire ; les ressaisir dans l'interface si necessaire.
+Automatic recovery is distinct from an exportable HA backup. An app backup
+contains the database and therefore the secrets stored in it.
 
-Un changement de tag d'image seul n'est pas une restauration des donnees.
-Ne pas appliquer une ancienne image a une base migree sans compatibilite
-explicitement documentee. Pour un retour de version, preferer une archive de
-l'app prise avant la mise a jour et conserver une image versionnee immutable.
-Ne pas toucher aux configurations VTherm ni au chauffage pour ce retour.
+## App Backup
 
-Aucune sauvegarde ou restauration sur HA OS n'a encore ete testee dans ce lot.
+The manifest uses `backup: cold`: Supervisor temporarily stops the app to
+back up its database without concurrent writes, then restarts it if it was
+running. This may interrupt an active conversation, but does not require
+stopping Home Assistant or the heating.
 
-## Suppression et desinstallation
+1. Confirm the temporary app interruption before starting.
+2. In **Settings > System > Backups**, create a manual backup and select
+   **VTherm Assistant only** for this isolated operation.
+3. Verify that the archive contains the app and protect it as a secret. If it
+   is encrypted, keep its recovery key out of chat and logs.
+4. Verify that the app restarts and recovers its conversation.
 
-Avant une suppression irreversible, faire confirmer le perimetre et la perte
-des donnees, et proposer une sauvegarde utilisable avant l'action.
+## Restore
 
-Dans l'interface, Nouvelle conversation efface les echanges du compte courant.
-Supprimer la cle retire sa cle du fournisseur selectionne ; Supprimer le jeton
-retire son jeton MCP stocke dans l'app. Ces actions ne suppriment pas les donnees
-des autres administrateurs ni les copies deja presentes dans les sauvegardes.
-Revoquer aussi les jetons aupres de HA ou du fournisseur si l'objectif est
-d'invalider des copies anciennes, pas uniquement de retirer le stockage local.
+Restoring replaces the app's conversations, settings, and secrets with those
+in the archive; changes made since then will be lost. An existing backup does
+not automatically authorize a restore.
 
-Pour retirer toutes les donnees et l'app, confirmer la desinstallation
-d'Assistant VTherm uniquement, puis utiliser la page de cette app dans HA.
-Verifier la suppression de ses donnees dans l'option de desinstallation.
-Cela ne retire pas VTherm, MCP ou les configurations de chauffage. Les archives
-existantes restent sensibles : leur suppression est une operation distincte
-qui demande son propre accord et un examen des points de recuperation restants.
+1. Verify the archive, app version, and availability of its decryption key.
+   Separately confirm the restore and overwrite of current data.
+2. If needed, back up the current app state first.
+3. In Home Assistant's partial restore flow, select **VTherm Assistant** and
+   its data only. Do not restore HA settings, Recorder, VTherm, or other apps
+   to recover this conversation.
+4. After restart, check ingress, the conversation, model, and MCP connection.
+   A restored token may have been revoked; replace it in settings if needed.
+
+Do not restore an old image over a migrated database unless compatibility is
+documented. Changing the image tag alone does not restore data.
+
+French version: [DOCS-fr](DOCS-fr.md).

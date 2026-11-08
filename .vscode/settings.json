@@ -6,6 +6,7 @@
         },
         "command": true,
         "./.venv/bin/python": true,
-        "arch": true
+        "arch": true,
+        "mv": true
     }
 }
