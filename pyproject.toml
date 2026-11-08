@@ -11,6 +11,7 @@ dependencies = [
     "fastapi>=0.115,<1",
     "google-adk>=2.13,<3",
     "httpx>=0.27,<1",
+    "jsonschema>=4.22,<5",
     "litellm>=1.84,<1.106.0",
     "mcp>=1.9,<2",
     "uvicorn>=0.30,<1",

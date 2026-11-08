@@ -375,12 +375,27 @@ Le client utilise uniquement le serveur MCP officiel à l'adresse
 jeton Home Assistant administrateur. L'identité ingress ne fournit pas ce jeton.
 Le client vérifie les droits du jeton avant chaque connexion.
 
-Le client n'expose que les noms exacts de son allowlist de lecture seule ; les
-outils inconnus et ceux qui modifient l'installation sont refusés, même si le
-serveur les annonce comme étant en lecture seule. Les sources vérifiées sont
-`homeassistant__GetLiveContext`, l'inventaire, l'état et le diagnostic VTherm.
-`GetLiveContext` sans filtre reste global ; une lecture ciblée d'entité liée
-utilise son `entity_id` exact après vérification du lien publié par VTherm.
+Le client découvre à chaque construction d'agent les outils publiés dans les
+namespaces `versatile_thermostat__` et `assist__versatile_thermostat__`, puis
+valide leurs schémas et arguments. Ce filtre par nom est un compromis
+provisoire, pas une preuve d'origine : HA Core 2026.10.4 ne sérialise pas
+l'identité d'intégration dans `tools/list`, et une autre intégration pourrait
+publier le même préfixe. Les effets incertains sont traités comme des écritures.
+
+Une écriture VTherm n'est appelée qu'après un accord séparé sur l'opération, le
+climate cible et les paramètres exacts affichés dans l'interface. L'accord est
+lié à l'utilisateur, à la conversation, à l'appel et à ses arguments ; il expire
+et ne peut être consommé qu'une fois. Un refus, une ambiguïté ou une expiration
+n'exécute pas l'appel. Après accord, le résultat MCP réel est conservé ; une
+erreur ou une réponse interrompue n'est pas présentée comme une réussite.
+Aucun outil générique d'écriture Home Assistant n'est exposé.
+
+Hors VTherm, la sélection reste explicite et limitée à
+`homeassistant__GetLiveContext`. Sans filtre, ce contexte reste global ; une
+lecture ciblée d'entité liée utilise son `entity_id` exact après vérification
+du lien publié par VTherm. L'inventaire, l'état et le diagnostic VTherm, ainsi
+que l'historique, les journaux et les plugins, ne sont proposés que si les
+outils correspondants sont découverts et validés.
 
 L'historique, les journaux et les plugins sont conditionnels : le client ne les
 propose que si le serveur MCP connecté annonce leur nom exact autorisé. Le
@@ -408,6 +423,16 @@ autorisés, bornées et débarrassées des secrets connus ; configuration brute,
 températures de presets et texte libre d'erreur ne sont pas transmis. Les
 résultats sont des données non fiables, jamais des instructions. La
 conversation utilise ces outils via ADK et reprend les échanges récents de
-l'utilisateur. Les essais actuels reposent sur des services simulés : le
-fonctionnement bout en bout avec les installations et fournisseurs réels reste
-à vérifier.
+l'utilisateur.
+
+Les tests automatisés utilisent des serveurs MCP et fournisseurs simulés. Les
+contrats du serveur ont été examinés pour HA Core 2026.10.4 et les outils
+VTherm pour 10.6.4 ; l'installation de référence est en VTherm 10.6.3, où
+historique, journaux et plugins ne sont pas publiés. La sérialisation locale
+des schémas est testée pour Gemini, OpenAI, Anthropic et Ollama, mais
+l'acceptation par des modèles distants, les écritures sur une instance réelle
+et les versions HA/VTherm supplémentaires restent à valider.
+
+Ce changement n'est pas inclus dans l'image HA OS publiée `0.1.2` : celle-ci
+reste en lecture seule. Ne pas utiliser cette image pour essayer le nouveau
+parcours d'écriture.

@@ -351,6 +351,55 @@
             .message-state.error {
                 color: var(--error);
             }
+            .confirmation-panel {
+                margin-top: 12px;
+                padding: 14px;
+                border: 1px solid #65512d;
+                border-left: 3px solid #e6ad55;
+                border-radius: 5px;
+                background: #211d15;
+            }
+            .confirmation-panel h2 {
+                color: var(--heading);
+                font-size: 15px;
+                font-weight: 600;
+                margin-bottom: 10px;
+            }
+            .confirmation-field {
+                margin: 8px 0;
+                overflow-wrap: anywhere;
+            }
+            .confirmation-field strong {
+                color: #e6ad55;
+                display: block;
+                font-size: 11px;
+                text-transform: uppercase;
+            }
+            .confirmation-panel pre {
+                margin: 8px 0 12px;
+                max-height: 220px;
+                overflow: auto;
+                padding: 10px;
+                border: 1px solid var(--line);
+                border-radius: 4px;
+                background: #161b22;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+                font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+            }
+            .confirmation-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .confirmation-status {
+                color: var(--muted);
+                font-size: 12px;
+                margin: 8px 0 0;
+            }
+            .confirmation-status.error {
+                color: var(--error);
+            }
             .retry {
                 border: 0;
                 padding: 0;
@@ -544,7 +593,7 @@
                         </div>
                     </div>
                     <div class="header-actions" id="header-actions" hidden>
-                        <span class="status">Lecture seule</span
+                        <span class="status">Écritures sur confirmation</span
                         ><button class="button new-button" id="new" title="Nouvelle conversation" aria-label="Nouvelle conversation">
                             + <span class="new-label">Nouvelle conversation</span></button
                         ><button class="button icon" id="settings-button" title="Configuration" aria-label="Configuration">&#9881;</button>
@@ -656,6 +705,7 @@
             let inventoryRequest = 0;
             let conversationVersion = 0;
             let inventoryLoading = false;
+            let pendingConfirmation = false;
             const request = (path, options = {}) =>
                 fetch(path, { ...options, headers: { "X-VTherm-Request": "1", ...(options.headers || {}) }, cache: "no-store" });
             const jsonOptions = (method, value) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
@@ -961,6 +1011,69 @@
                     }
                 }
             }
+            function renderConfirmation(row, details) {
+                row.querySelector(".confirmation-panel")?.remove();
+                const content = row.querySelector(":scope > div:last-child");
+                const panel = document.createElement("section");
+                panel.className = "confirmation-panel";
+                panel.setAttribute("aria-label", "Confirmation d’une action VTherm");
+                const title = document.createElement("h2");
+                title.textContent = "Action à confirmer";
+                const field = (labelText, value) => {
+                    const element = document.createElement("div");
+                    element.className = "confirmation-field";
+                    const label = document.createElement("strong");
+                    label.textContent = labelText;
+                    const text = document.createElement("span");
+                    text.textContent = value;
+                    element.append(label, text);
+                    return element;
+                };
+                const targetValid = typeof details.target === "string"
+                    && /^climate\.[a-z0-9_]+$/.test(details.target)
+                    && details.arguments?.entity_id === details.target;
+                const expired = !Number.isInteger(details.expires_at) || details.expires_at * 1000 <= Date.now();
+                pendingConfirmation = !expired;
+                panel.dataset.expired = String(expired);
+                panel.append(
+                    title,
+                    field("Opération", typeof details.operation === "string" ? details.operation : "Inconnue"),
+                    field("VTherm cible", targetValid ? details.target : "Cible non déterminée"),
+                );
+                const argumentsLabel = document.createElement("strong");
+                argumentsLabel.className = "confirmation-field";
+                argumentsLabel.textContent = "Paramètres exacts";
+                const argumentsView = document.createElement("pre");
+                argumentsView.textContent = JSON.stringify(details.arguments ?? {}, null, 2);
+                const hint = document.createElement("p");
+                hint.className = "confirmation-field";
+                hint.textContent = typeof details.hint === "string" ? details.hint : "";
+                const status = document.createElement("p");
+                status.className = "confirmation-status";
+                status.setAttribute("role", "status");
+                if (expired) status.textContent = "Cette demande a expiré. Relancez l’action.";
+                else if (!targetValid) status.textContent = "La cible est ambiguë ; cette action ne peut pas être approuvée.";
+                const actions = document.createElement("div");
+                actions.className = "confirmation-actions";
+                const approve = document.createElement("button");
+                approve.type = "button";
+                approve.className = "button primary";
+                approve.textContent = "Confirmer l’action";
+                approve.disabled = expired || !targetValid;
+                approve.onclick = () => submitConfirmation(details, true, panel);
+                const reject = document.createElement("button");
+                reject.type = "button";
+                reject.className = "button";
+                reject.textContent = "Refuser";
+                reject.disabled = expired;
+                reject.onclick = () => submitConfirmation(details, false, panel);
+                actions.append(approve, reject);
+                panel.append(argumentsLabel, argumentsView, hint, actions, status);
+                content.append(panel);
+                send.disabled = pendingConfirmation;
+                messages.scrollTop = messages.scrollHeight;
+                return panel;
+            }
             async function initializeInventory() {
                 const version = ++inventoryRequest;
                 inventoryLoading = true;
@@ -1020,17 +1133,25 @@
                 const data = await response.json();
                 conversationVersion = data.version ?? 0;
                 inventoryLoading = false;
+                pendingConfirmation = false;
                 messages.replaceChildren();
                 if (data.inventory) renderInventory(data.inventory);
                 for (const message of data.messages)
                     if (["user", "assistant"].includes(message.role) && typeof message.text === "string") addMessage(message.role, message.text, message.created_at);
+                if (data.pending_confirmation) {
+                    const pendingMessage = addMessage("assistant", "");
+                    pendingMessage.state.textContent = "Une décision est requise avant l’appel.";
+                    renderConfirmation(pendingMessage.row, data.pending_confirmation);
+                }
                 showEmpty();
                 conversation.hidden = false;
                 byId("header-actions").hidden = false;
                 if (!data.inventory && !data.messages.length) await initializeInventory();
+                send.disabled = pendingConfirmation || inventoryLoading;
             }
             async function submitQuestion(text) {
-                if (controller || inventoryLoading || !text.trim()) return;
+                if (controller || inventoryLoading || pendingConfirmation || !text.trim()) return;
+                messages.querySelectorAll('.confirmation-panel[data-expired="true"]').forEach(panel => panel.closest(".message")?.remove());
                 question.value = "";
                 const sentAt = new Date().toISOString();
                 const userMessage = addMessage("user", text, sentAt);
@@ -1039,6 +1160,7 @@
                 controller = new AbortController();
                 send.disabled = true;
                 let complete = false,
+                    awaitingConfirmation = false,
                     failure = "La réponse a été interrompue.";
                 try {
                     const response = await request("api/conversation", { ...jsonOptions("POST", { question: text, created_at: sentAt }), signal: controller.signal });
@@ -1061,6 +1183,11 @@
                                     messages.scrollTop = messages.scrollHeight;
                                 } else if (event.type === "timestamp" && event.role === "user") userMessage.setTimestamp(event.created_at);
                                 else if (event.type === "notice") answer.state.textContent = event.message;
+                                else if (event.type === "confirmation") {
+                                    awaitingConfirmation = true;
+                                    answer.state.textContent = "Une décision est requise avant l’appel.";
+                                    renderConfirmation(answer.row, event);
+                                }
                                 else if (event.type === "error") failure = event.message;
                                 else if (event.type === "complete") complete = true;
                             }
@@ -1070,9 +1197,10 @@
                     if (error.name === "AbortError") return;
                 } finally {
                     controller = null;
-                    send.disabled = inventoryLoading;
+                    send.disabled = inventoryLoading || pendingConfirmation;
                 }
                 if (complete) answer.state.textContent = "";
+                else if (awaitingConfirmation) return;
                 else {
                     answer.state.classList.add("error");
                     answer.state.textContent = `${failure} `;
@@ -1086,6 +1214,69 @@
                         submitQuestion(text);
                     };
                     answer.state.append(retry);
+                }
+            }
+            async function submitConfirmation(details, confirmed, panel) {
+                if (controller || !pendingConfirmation) return;
+                const buttons = panel.querySelectorAll("button");
+                buttons.forEach(button => button.disabled = true);
+                const panelStatus = panel.querySelector(".confirmation-status");
+                panelStatus.textContent = confirmed ? "Accord transmis…" : "Refus transmis…";
+                const answer = addMessage("assistant", "");
+                answer.state.textContent = "Traitement en cours…";
+                controller = new AbortController();
+                send.disabled = true;
+                let complete = false, awaitingConfirmation = false, failure = "La confirmation n’a pas abouti.";
+                try {
+                    const response = await request("api/conversation/confirm", {
+                        ...jsonOptions("POST", { confirmation_id: details.confirmation_id, confirmed }),
+                        signal: controller.signal,
+                    });
+                    if (!response.ok || !response.body) {
+                        const error = await response.json().catch(() => ({}));
+                        if ([409, 410].includes(response.status)) await loadConversation();
+                        throw new Error(error.detail || failure);
+                    }
+                    const reader = response.body.getReader(), decoder = new TextDecoder();
+                    let buffer = "";
+                    while (true) {
+                        const chunk = await reader.read();
+                        buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+                        const lines = buffer.split("\n");
+                        buffer = lines.pop();
+                        for (const line of lines) if (line) {
+                            const event = JSON.parse(line);
+                            if (event.type === "delta") {
+                                if (!answer.text) answer.setTimestamp(event.created_at || new Date().toISOString());
+                                answer.text += event.text;
+                                renderMarkdown(answer.body, answer.text);
+                                messages.scrollTop = messages.scrollHeight;
+                            } else if (event.type === "confirmation") {
+                                awaitingConfirmation = true;
+                                answer.state.textContent = "Une décision est requise avant l’appel.";
+                                renderConfirmation(answer.row, event);
+                            } else if (event.type === "error") failure = event.message;
+                            else if (event.type === "complete") complete = true;
+                        }
+                        if (chunk.done) break;
+                    }
+                } catch (error) {
+                    if (error.name === "AbortError") return;
+                    failure = error.message || failure;
+                } finally {
+                    controller = null;
+                    pendingConfirmation = awaitingConfirmation;
+                    send.disabled = inventoryLoading || pendingConfirmation;
+                }
+                if (complete) {
+                    answer.state.textContent = "";
+                    panelStatus.textContent = confirmed ? "Accord transmis. Résultat ci-dessous." : "Action refusée.";
+                } else if (awaitingConfirmation) return;
+                else {
+                    answer.state.classList.add("error");
+                    answer.state.textContent = failure;
+                    panelStatus.classList.add("error");
+                    panelStatus.textContent = failure;
                 }
             }
             byId("composer").onsubmit = (event) => {

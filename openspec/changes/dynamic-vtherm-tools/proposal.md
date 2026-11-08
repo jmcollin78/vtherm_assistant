@@ -30,4 +30,4 @@ Aucune.
 - Conversation et interface : identification des appels d'écriture, affichage de l'action et de ses paramètres, attente d'une confirmation explicite avant exécution.
 - Home Assistant et Versatile Thermostat : l'assistant pourra effectuer des changements VTherm demandés et confirmés ; les droits effectifs du jeton et les capacités publiées par l'intégration bornent les opérations possibles.
 - Fournisseurs de modèles : compatibilité des schémas d'outils dynamiques à vérifier pour les fournisseurs pris en charge.
-- Le contexte actuel d'`openspec/config.yaml` impose encore une politique générale de lecture seule ; sa conciliation avec cette évolution reste hors des artefacts confirmés ici et devra être résolue avant l'implémentation.
+- Le contexte global d'`openspec/config.yaml` autorise provisoirement l'identification des outils VTherm par leurs namespaces documentés, faute de métadonnée d'origine transmise par HA ; cette convention ne constitue pas une preuve d'identité. Toute écriture demeure soumise au consentement explicite sur l'action et ses paramètres exacts, et aucun outil d'écriture Home Assistant hors de ces namespaces n'est exposé.

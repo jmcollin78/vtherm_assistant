@@ -2,6 +2,7 @@ import os
 import stat
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -14,10 +15,11 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.tools import BaseTool
 from google.genai import types
 from litellm.types.utils import Delta, ModelResponseStream, StreamingChoices
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
 
 from vtherm_assistant.conversations import ConversationResponse, ConversationRunner, ConversationStore, IncompleteResponse
 from vtherm_assistant.documentation import VersatileThermostatDocumentationTool
+from vtherm_assistant.ha_mcp import MCPTool
 from vtherm_assistant.main import SUPERVISOR_ADDRESS, create_app
 from vtherm_assistant.oauth import OAuthConfig, OAuthTokens
 from vtherm_assistant.oauth_flow import SESSION_COOKIE, Session
@@ -63,6 +65,56 @@ def test_response_stream_masks_split_secrets_and_avoids_final_duplication() -> N
     output += response.accept(event("Bonjour secret-key !", False))
     response.finish()
     assert output == "Bonjour [masqué] !"
+
+
+def test_response_stream_captures_exact_adk_tool_confirmation() -> None:
+    response = ConversationResponse("vtherm_assistant", [])
+    arguments = {"entity_id": "climate.salon", "temperature": 20}
+    payload = {
+        "user_id": "alice", "tool_name": "versatile_thermostat__set_temperature",
+        "arguments": arguments, "function_call_id": "call-1",
+        "expires_at": 2000000000, "nonce": "n" * 32,
+    }
+    event = Event(author="vtherm_assistant", content=types.Content(role="model", parts=[
+        types.Part(function_call=types.FunctionCall(
+            name="adk_request_confirmation", id="confirmation-1", args={
+                "originalFunctionCall": {
+                    "id": "call-1", "name": "versatile_thermostat__set_temperature", "args": arguments,
+                },
+                "toolConfirmation": {"hint": "Vérifiez les paramètres.", "payload": payload},
+            },
+        )),
+    ]))
+
+    assert response.accept(event) == ""
+    assert response.confirmation == {
+        "confirmation_id": "confirmation-1", "function_call_id": "call-1",
+        "operation": "versatile_thermostat__set_temperature", "arguments": arguments,
+        "hint": "Vérifiez les paramètres.", "expires_at": 2000000000, "payload": payload,
+        "tool_confirmation": {"hint": "Vérifiez les paramètres.", "payload": payload},
+    }
+
+
+def test_response_stream_rejects_mismatched_confirmation_arguments() -> None:
+    response = ConversationResponse("vtherm_assistant", [])
+    event = Event(author="vtherm_assistant", content=types.Content(role="model", parts=[
+        types.Part(function_call=types.FunctionCall(
+            name="adk_request_confirmation", id="confirmation-1", args={
+                "originalFunctionCall": {
+                    "id": "call-1", "name": "versatile_thermostat__set_temperature",
+                    "args": {"entity_id": "climate.salon", "temperature": 20},
+                },
+                "toolConfirmation": {"payload": {
+                    "user_id": "alice", "tool_name": "versatile_thermostat__set_temperature",
+                    "arguments": {"entity_id": "climate.salon", "temperature": 21},
+                    "function_call_id": "call-1", "expires_at": 2000000000, "nonce": "n" * 32,
+                }},
+            },
+        )),
+    ]))
+
+    with pytest.raises(IncompleteResponse, match="ne correspond pas"):
+        response.accept(event)
 
 
 @pytest.mark.parametrize("event", [
@@ -137,7 +189,7 @@ def test_conversation_runner_streaming_providers(tmp_path, provider_name, tool_c
     async def run():
         return [event async for event in application.state.conversation_runner.respond("alice", "État du salon ?", ["secret-key"])]
 
-    with patch.object(application.state.mcp, "list_read_only_tools", new_callable=AsyncMock, return_value=[tool]), \
+    with patch.object(application.state.mcp, "list_tools", new_callable=AsyncMock, return_value=[tool]), \
          patch.object(application.state.mcp, "call_read_only_tool", new_callable=AsyncMock, return_value=result) as call_tool, \
          patch("google.genai.Client") as provider, \
          patch("google.adk.models.lite_llm.LiteLLMClient.acompletion", new_callable=AsyncMock) as completion:
@@ -167,6 +219,159 @@ def test_conversation_runner_streaming_providers(tmp_path, provider_name, tool_c
         assert events[-1]["type"] == "error"
         assert not any(event["type"] == "complete" for event in events)
         assert application.state.conversations.load("alice") is None
+
+
+@pytest.mark.parametrize(("confirmed", "tool_error", "interrupted"), [
+    (True, False, False), (False, False, False), (True, True, False), (True, False, True),
+], ids=["approved", "refused", "mcp-error", "interrupted"])
+def test_conversation_confirmation_resume_executes_only_approved_write_once(
+    tmp_path, confirmed, tool_error, interrupted,
+) -> None:
+    from vtherm_assistant.models import ModelConfig
+
+    config = OAuthConfig("https://assistant.example", "https://ha.example", "http://homeassistant:8123")
+    application = create_app("standalone", oauth_config=config, data_dir=tmp_path / "private")
+    application.state.secrets.put("alice", "gemini", "fake-key")
+    application.state.models.configure("alice", ModelConfig("gemini", "gemini-test"))
+    description = Tool(
+        name="versatile_thermostat__set_temperature",
+        inputSchema={
+            "type": "object",
+            "properties": {"entity_id": {"type": "string"}, "temperature": {"type": "number"}},
+            "required": ["entity_id", "temperature"], "additionalProperties": False,
+        },
+        annotations={"readOnlyHint": False, "destructiveHint": False},
+    )
+    arguments = {"entity_id": "climate.salon", "temperature": 20}
+    tool = MCPTool(application.state.mcp, "alice", description)
+    agent = application.state.models.agent_for("alice")
+    agent.tools = [tool]
+
+    async def for_user(_user_id, _additional_secrets=()):
+        return agent
+
+    runner = ConversationRunner(SimpleNamespace(for_user=for_user), application.state.conversations)
+    session = AsyncMock()
+    session.list_tools.return_value = ListToolsResult(tools=[description])
+    session.call_tool.return_value = CallToolResult(
+        isError=tool_error,
+        content=[TextContent(type="text", text='{"status":"failed"}' if tool_error else '{"status":"accepted"}')],
+    )
+
+    @asynccontextmanager
+    async def session_for(_user_id):
+        yield session
+
+    async def first_stream():
+        yield types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(role="model", parts=[
+            types.Part(function_call=types.FunctionCall(name=description.name, id="write-call", args=arguments)),
+        ]))])
+
+    async def final_stream():
+        if interrupted:
+            yield types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(
+                role="model", parts=[types.Part(text="La température a été modifiée.")],
+            ))])
+            yield types.GenerateContentResponse(candidates=[types.Candidate(finish_reason=types.FinishReason.MAX_TOKENS)])
+            return
+        text = (
+            "Le serveur MCP a refusé la consigne ; la modification n'est pas confirmée."
+            if tool_error else "Action transmise à VTherm." if confirmed else "Aucune écriture demandée."
+        )
+        yield types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(role="model", parts=[
+            types.Part(text=text),
+        ]))])
+
+    async def run():
+        requested = [event async for event in runner.respond("alice", "Règle le salon à 20 degrés", [])]
+        confirmation = next(event for event in requested if event["type"] == "confirmation")
+        pending = application.state.conversations.load("alice")[1]["pending_confirmation"]
+        assert confirmation["confirmation_id"] == pending["confirmation_id"]
+        assert pending["payload"]["arguments"] == arguments
+        stored_events = application.state.conversations.load("alice")[1]["events"]
+        assert any(event.get("actions", {}).get("requested_tool_confirmations") for event in stored_events)
+        resumed = [event async for event in runner.confirm("alice", confirmation["confirmation_id"], confirmed, [])]
+        replay = [event async for event in runner.confirm("alice", confirmation["confirmation_id"], confirmed, [])]
+        return requested, resumed, replay
+
+    with patch.object(application.state.mcp, "_session", side_effect=session_for), \
+         patch.object(application.state.mcp, "inventory_for", new_callable=AsyncMock,
+                      return_value={"thermostats": [{"entity_id": "climate.salon"}]}), \
+         patch("google.genai.Client") as provider:
+        provider.return_value.aio.models.generate_content_stream = AsyncMock(side_effect=[first_stream(), final_stream()])
+        requested, resumed, replay = asyncio.run(run())
+
+    assert requested[-1]["type"] == "confirmation"
+    assert resumed[-1]["type"] == ("error" if interrupted else "complete")
+    assert replay[-1]["type"] == "error"
+    assert session.call_tool.await_count == int(confirmed)
+    if interrupted:
+        assert not any(event["type"] == "delta" for event in resumed)
+        assert all("modifiée" not in event.get("text", "") for event in resumed)
+    stored = application.state.conversations.load("alice")
+    assert stored[1]["pending_confirmation"] is None
+    if confirmed and not interrupted:
+        responses = [
+            part["function_response"]["response"]
+            for event in stored[1]["events"]
+            for part in event.get("content", {}).get("parts", [])
+            if part.get("function_response", {}).get("name") == description.name
+        ]
+        assert responses[-1].get("isError", False) is tool_error
+    if confirmed and not tool_error and not interrupted:
+        assert stored[0][-1]["text"] == "Action transmise à VTherm."
+    elif not confirmed:
+        assert stored[0][-1]["text"] == "Aucune écriture demandée."
+
+
+def test_conversation_confirmation_rejects_reuse_tampering_expiry_and_concurrency(tmp_path) -> None:
+    store = ConversationStore(PrivateDatabase(tmp_path / "private"))
+    arguments = {"entity_id": "climate.salon", "temperature": 20}
+    payload = {
+        "user_id": "alice", "tool_name": "versatile_thermostat__set_temperature",
+        "arguments": arguments, "function_call_id": "function-1",
+        "expires_at": 2000000000, "nonce": "n" * 32,
+    }
+    pending = {
+        "confirmation_id": "confirmation-1", "function_call_id": "function-1",
+        "operation": "versatile_thermostat__set_temperature", "arguments": arguments,
+        "hint": "Vérifiez les paramètres.", "expires_at": payload["expires_at"],
+        "payload": payload, "tool_confirmation": {"hint": "Vérifiez les paramètres.", "payload": payload},
+        "user_id": "alice", "conversation_id": "conversation-1",
+    }
+    context = {"events": [], "conversation_id": "conversation-1", "pending_confirmation": pending}
+    store.save("alice", [{"role": "user", "text": "Règle le salon."}], context)
+
+    async def unused_agent(*_args):
+        raise AssertionError("Le modèle ne doit pas être appelé pour une confirmation rejetée.")
+
+    runner = ConversationRunner(SimpleNamespace(for_user=unused_agent), store)
+    wrong_user = asyncio.run(anext(runner.confirm("bob", "confirmation-1", True, [])))
+    assert wrong_user["type"] == "error"
+
+    tampered = {**pending, "payload": {**payload, "arguments": {**arguments, "temperature": 21}}}
+    store.save("alice", [{"role": "user", "text": "Règle le salon."}], {
+        **context, "pending_confirmation": tampered,
+    })
+    tampered_result = asyncio.run(anext(runner.confirm("alice", "confirmation-1", True, [])))
+    assert tampered_result["type"] == "error"
+
+    expired = {**pending, "expires_at": 1, "payload": {**payload, "expires_at": 1}}
+    expired["tool_confirmation"] = {"hint": "Vérifiez les paramètres.", "payload": expired["payload"]}
+    store.save("alice", [{"role": "user", "text": "Règle le salon."}], {
+        **context, "pending_confirmation": expired,
+    })
+    async def confirm_expired():
+        return [event async for event in runner.confirm("alice", "confirmation-1", True, [])]
+
+    expired_result = asyncio.run(confirm_expired())
+    assert expired_result[-1]["type"] == "error"
+    assert store.load("alice")[1]["pending_confirmation"] is None
+
+    runner.running.add("alice")
+    concurrent = asyncio.run(anext(runner.confirm("alice", "confirmation-1", True, [])))
+    runner.running.remove("alice")
+    assert concurrent == {"type": "error", "message": "Une réponse est déjà en cours."}
 
 
 def test_conversation_runner_streams_and_restores_redacted_history(tmp_path) -> None:
@@ -255,7 +460,7 @@ def test_conversation_runner_restores_tool_evidence_after_restart_and_isolates_u
             stream(types.Part(text="Le thermostat est inhibé.")),
         ])
     streams.extend(stream(types.Part(text="Vérifions la cause.")) for _index in range(3))
-    with patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.list_read_only_tools", new_callable=AsyncMock, return_value=[tool]), \
+    with patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.list_tools", new_callable=AsyncMock, return_value=[tool]), \
          patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.call_read_only_tool", new_callable=AsyncMock, side_effect=read_tool), \
          patch("google.genai.Client") as provider:
         generate = AsyncMock(side_effect=streams)
@@ -573,16 +778,82 @@ def test_conversation_route_uses_verified_identity_after_restart(tmp_path) -> No
     restarted = create_app("ingress", verify_admin=verify_admin, data_dir=directory)
     with TestClient(restarted, client=(SUPERVISOR_ADDRESS, 12345)) as client:
         response = client.get("/api/conversation?user_id=bob", headers={"X-Remote-User-Id": "alice"})
-        assert response.json() == {"messages": [{"text": "Alice"}], "inventory": None, "version": 1}
+        assert response.json() == {
+            "messages": [{"text": "Alice"}], "inventory": None,
+            "pending_confirmation": None, "version": 1,
+        }
         assert response.headers["cache-control"] == "no-store"
-        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {"messages": [{"text": "Bob"}], "inventory": None, "version": 1}
+        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {
+            "messages": [{"text": "Bob"}], "inventory": None,
+            "pending_confirmation": None, "version": 1,
+        }
         assert client.get("/api/conversation", headers={"X-Remote-User-Id": "other"}).status_code == 403
         assert client.delete("/api/conversation", headers={"X-Remote-User-Id": "alice"}).status_code == 403
         assert client.delete("/api/conversation?user_id=bob", headers={"X-Remote-User-Id": "alice", "X-VTherm-Request": "1"}).status_code == 204
-        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "alice"}).json() == {"messages": [], "inventory": None, "version": 2}
-        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {"messages": [{"text": "Bob"}], "inventory": None, "version": 1}
+        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "alice"}).json() == {
+            "messages": [], "inventory": None, "pending_confirmation": None, "version": 2,
+        }
+        assert client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json() == {
+            "messages": [{"text": "Bob"}], "inventory": None,
+            "pending_confirmation": None, "version": 1,
+        }
     assert restarted.state.conversations.load("alice") is None
     assert restarted.state.conversations.load("bob")[1] == {"thermostat": "bureau"}
+
+
+def test_confirmation_route_exposes_only_review_fields_and_requires_exact_payload(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("VTHERM_HA_INTERNAL_URL", "http://homeassistant:8123")
+
+    async def verify_admin(user_id: str) -> bool:
+        return user_id in {"alice", "bob"}
+
+    application = create_app("ingress", verify_admin=verify_admin, data_dir=tmp_path / "private")
+    arguments = {"entity_id": "climate.salon", "temperature": 20}
+    payload = {
+        "user_id": "alice", "tool_name": "versatile_thermostat__set_temperature",
+        "arguments": arguments, "function_call_id": "function-1",
+        "expires_at": 2000000000, "nonce": "n" * 32,
+    }
+    pending = {
+        "confirmation_id": "confirmation-1", "function_call_id": "function-1",
+        "operation": "versatile_thermostat__set_temperature", "arguments": arguments,
+        "hint": "Vérifiez les paramètres.", "expires_at": payload["expires_at"],
+        "payload": payload, "tool_confirmation": {"hint": "Vérifiez les paramètres.", "payload": payload},
+        "user_id": "alice", "conversation_id": "private-conversation-id",
+    }
+    application.state.conversations.save("alice", [{"role": "user", "text": "Régle le salon."}], {
+        "events": [], "conversation_id": "private-conversation-id", "pending_confirmation": pending,
+    })
+    calls = []
+
+    async def confirm(*args):
+        calls.append(args)
+        yield {"type": "complete"}
+
+    headers = {"X-Remote-User-Id": "alice", "X-VTherm-Request": "1"}
+    with TestClient(application, client=(SUPERVISOR_ADDRESS, 12345)) as client, \
+         patch.object(application.state.conversation_runner, "confirm", new=confirm):
+        alice_state = client.get("/api/conversation", headers=headers).json()
+        assert alice_state["pending_confirmation"] == {
+            "confirmation_id": "confirmation-1",
+            "operation": "versatile_thermostat__set_temperature",
+            "target": "climate.salon", "arguments": arguments,
+            "hint": "Vérifiez les paramètres.", "expires_at": 2000000000,
+        }
+        bob_state = client.get("/api/conversation", headers={"X-Remote-User-Id": "bob"}).json()
+        assert bob_state["pending_confirmation"] is None
+        assert client.post("/api/conversation/confirm", headers=headers, json={
+            "confirmation_id": "confirmation-1", "confirmed": True, "arguments": arguments,
+        }).status_code == 400
+        response = client.post("/api/conversation/confirm", headers=headers, json={
+            "confirmation_id": "confirmation-1", "confirmed": True,
+        })
+
+    assert response.status_code == 200
+    assert '"type": "complete"' in response.text
+    assert calls == [("alice", "confirmation-1", True, [])]
+    assert "private-conversation-id" not in response.text
+    assert "n" * 32 not in response.text
 
 
 def test_new_conversation_removes_only_the_current_users_messages_and_context(tmp_path) -> None:
@@ -645,7 +916,8 @@ def test_conversation_agent_uses_only_users_read_tools_and_requests_clarificatio
     assert "ne prouve pas l'absence d'un événement ou d'une configuration" in agent.instruction
     assert "recherche de panne ou d'incident" in agent.instruction
     assert "indique la source" in agent.instruction
-    assert "Ne modifie jamais" in agent.instruction
+    assert "demande un accord explicite sur sa cible et tous ses paramètres" in agent.instruction
+    assert "N'utilise jamais d'outil générique d'écriture Home Assistant" in agent.instruction
 
 
 @pytest.mark.parametrize("question,clarification", [
@@ -680,7 +952,7 @@ def test_conversation_agent_requests_clarification_after_tool_data(tmp_path, que
             new_message=types.Content(role="user", parts=[types.Part(text=question)]),
         )]
 
-    with patch.object(application.state.mcp, "list_read_only_tools", new_callable=AsyncMock, return_value=[tool]), \
+    with patch.object(application.state.mcp, "list_tools", new_callable=AsyncMock, return_value=[tool]), \
          patch.object(application.state.mcp, "call_read_only_tool", new_callable=AsyncMock, return_value=tool_result) as call_tool, \
          patch("google.genai.Client") as provider:
         generate_content = AsyncMock(side_effect=responses)

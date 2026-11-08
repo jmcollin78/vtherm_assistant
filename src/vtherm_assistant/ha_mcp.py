@@ -1,6 +1,8 @@
 import json
 import logging
 import math
+import secrets as token_secrets
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -9,6 +11,7 @@ from typing import Any
 import httpx
 from google.adk.tools import BaseTool, ToolContext
 from google.genai import types
+from jsonschema import Draft202012Validator, FormatChecker, SchemaError, ValidationError
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, Tool
@@ -138,6 +141,78 @@ def _tool_result_payload(result: CallToolResult) -> dict[str, Any] | None:
     except (ValueError, TypeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _is_vtherm_tool_name(name: str) -> bool:
+    return name.startswith(("versatile_thermostat__", "assist__versatile_thermostat__"))
+
+
+def _is_read_only_vtherm_tool(tool: Tool) -> bool:
+    annotations = tool.annotations
+    return (
+        _is_vtherm_tool_name(tool.name)
+        and annotations is not None
+        and annotations.readOnlyHint is True
+        and annotations.destructiveHint is False
+    )
+
+
+def _validate_dynamic_tool_schema(schema: Any) -> dict[str, Any]:
+    if not isinstance(schema, dict) or schema.get("type") != "object":
+        raise MCPToolDenied("Schéma d'outil VTherm non représentable")
+    try:
+        if len(json.dumps(schema, separators=(",", ":")).encode()) > 16_384:
+            raise MCPToolDenied("Schéma d'outil VTherm trop volumineux")
+        Draft202012Validator.check_schema(schema)
+    except (TypeError, ValueError, SchemaError):
+        raise MCPToolDenied("Schéma d'outil VTherm invalide") from None
+
+    supported_keywords = {
+        "type", "title", "description", "default", "properties", "required", "items", "enum",
+        "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength",
+        "minItems", "maxItems", "additionalProperties",
+    }
+    supported_types = {"object", "string", "number", "integer", "boolean", "array"}
+
+    def check_schema_node(node: Any) -> None:
+        if not isinstance(node, dict) or set(node) - supported_keywords or node.get("type") not in supported_types:
+            raise MCPToolDenied("Schéma d'outil VTherm non représentable")
+        if node.get("additionalProperties", False) is not False:
+            raise MCPToolDenied("Schéma d'outil VTherm non représentable")
+        properties = node.get("properties", {})
+        if not isinstance(properties, dict):
+            raise MCPToolDenied("Schéma d'outil VTherm non représentable")
+        required = node.get("required", [])
+        if not isinstance(required, list) or any(not isinstance(key, str) or key not in properties for key in required):
+            raise MCPToolDenied("Schéma d'outil VTherm non représentable")
+        for property_schema in properties.values():
+            check_schema_node(property_schema)
+        if "items" in node:
+            check_schema_node(node["items"])
+
+    check_schema_node(schema)
+    return schema
+
+
+def _provider_tool_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    result = {key: value for key, value in schema.items() if key not in {"additionalProperties", "title", "default"}}
+    if isinstance(schema.get("properties"), dict):
+        result["properties"] = {
+            name: _provider_tool_schema(property_schema)
+            for name, property_schema in schema["properties"].items()
+        }
+    if isinstance(schema.get("items"), dict):
+        result["items"] = _provider_tool_schema(schema["items"])
+    return result
+
+
+def _validate_dynamic_tool_arguments(schema: dict[str, Any], arguments: Any) -> None:
+    if not isinstance(arguments, dict):
+        raise MCPToolDenied("Paramètres VTherm invalides")
+    try:
+        Draft202012Validator(schema, format_checker=FormatChecker()).validate(arguments)
+    except (SchemaError, ValidationError, TypeError, ValueError):
+        raise MCPToolDenied("Paramètres VTherm invalides") from None
 
 
 def _safe_scalar(value: Any) -> Any:
@@ -593,18 +668,28 @@ class MCPRequestScope:
                     self.related_entity_ids.add(value)
 
 
-class ReadOnlyMCPTool(BaseTool):
+class MCPTool(BaseTool):
     def __init__(self, client: "HomeAssistantMCP", user_id: str, tool: Tool,
                  additional_secrets: tuple[str, ...] = (), scope: MCPRequestScope | None = None) -> None:
-        if tool.name not in READ_ONLY_TOOLS:
+        if tool.name in READ_ONLY_TOOL_DEFINITIONS:
+            description, schema = READ_ONLY_TOOL_DEFINITIONS[tool.name]
+            dynamic_tool = None
+            read_only = True
+        elif _is_vtherm_tool_name(tool.name):
+            schema = _provider_tool_schema(_validate_dynamic_tool_schema(tool.inputSchema))
+            description = tool.description or "Outil VTherm en lecture seule."
+            dynamic_tool = tool
+            read_only = _is_read_only_vtherm_tool(tool)
+        else:
             raise MCPToolDenied("Outil MCP non autorisé")
-        description, schema = READ_ONLY_TOOL_DEFINITIONS[tool.name]
         super().__init__(name=tool.name, description=description)
         self.client = client
         self.user_id = user_id
         self.input_schema = schema
         self.additional_secrets = additional_secrets
         self.scope = scope or MCPRequestScope()
+        self.dynamic_tool = dynamic_tool
+        self.read_only = read_only
 
     def _get_declaration(self) -> types.FunctionDeclaration:
         return types.FunctionDeclaration(name=self.name, description=self.description, parameters_json_schema=self.input_schema)
@@ -615,6 +700,54 @@ class ReadOnlyMCPTool(BaseTool):
         secrets = list(self.client.secrets.values(self.user_id)) + list(self.additional_secrets)
         if redact_data(args, secrets) != args:
             raise MCPToolDenied("Les arguments contiennent un identifiant secret")
+        if self.dynamic_tool is not None and not self.read_only:
+            schema = _validate_dynamic_tool_schema(self.dynamic_tool.inputSchema)
+            _validate_dynamic_tool_arguments(schema, args)
+            confirmation = tool_context.tool_confirmation
+            if confirmation is not None and not confirmation.confirmed:
+                return {"status": "cancelled", "state_changed": False}
+            try:
+                await self.client.validate_vtherm_write_target(self.user_id, args, self.scope)
+            except MCPToolDenied:
+                return {"status": "confirmation_unavailable", "state_changed": False,
+                        "reason": "Une cible climate VTherm unique et exposée est requise."}
+            if confirmation is None:
+                function_call_id = tool_context.function_call_id
+                if not function_call_id:
+                    raise MCPToolDenied("Confirmation de l'appel MCP indisponible")
+                payload = {
+                    "user_id": self.user_id,
+                    "tool_name": self.name,
+                    "arguments": args,
+                    "function_call_id": function_call_id,
+                    "expires_at": int(time.time()) + 600,
+                    "nonce": token_secrets.token_urlsafe(24),
+                }
+                tool_context.request_confirmation(
+                    hint="Cet outil peut modifier VTherm. Vérifiez la cible et les paramètres exacts.",
+                    payload=payload,
+                )
+                return {"status": "confirmation_required", "tool_name": self.name, "arguments": args}
+            function_call_id = tool_context.function_call_id
+            payload = confirmation.payload
+            if (
+                not function_call_id
+                or not isinstance(payload, dict)
+                or set(payload) != {"user_id", "tool_name", "arguments", "function_call_id", "expires_at", "nonce"}
+                or payload.get("user_id") != self.user_id
+                or payload.get("tool_name") != self.name
+                or payload.get("function_call_id") != function_call_id
+                or payload.get("arguments") != args
+                or type(payload.get("expires_at")) is not int
+                or payload["expires_at"] <= int(time.time())
+                or not isinstance(payload.get("nonce"), str)
+                or len(payload["nonce"]) < 24
+            ):
+                raise MCPToolDenied("Confirmation MCP invalide ou expirée")
+            result = await self.client.call_vtherm_tool(
+                self.user_id, self.name, args, expected_tool=self.dynamic_tool, scope=self.scope,
+            )
+            return redact_data(result.model_dump(mode="json", exclude_none=True), secrets)
         if self.name in GLOBAL_CONTEXT_TOOL_NAMES:
             self.scope.validate_live_context(args)
         if self.name in HISTORY_TOOL_NAMES and args.get("entity_id") != self.scope.selected_vtherm_id:
@@ -623,7 +756,12 @@ class ReadOnlyMCPTool(BaseTool):
             raise MCPToolDenied("La lecture VTherm est réservée au thermostat sélectionné")
         if self.name in VTHERM_STATE_TOOL_NAMES:
             self.scope.clear_vtherm_selection()
-        result = await self.client.call_read_only_tool(self.user_id, self.name, args)
+        if self.dynamic_tool is None:
+            result = await self.client.call_read_only_tool(self.user_id, self.name, args)
+        else:
+            result = await self.client.call_read_only_tool(
+                self.user_id, self.name, args, expected_tool=self.dynamic_tool,
+            )
         if self.name in VTHERM_STATE_TOOL_NAMES:
             self.scope.capture_vtherm(self.name, args.get("entity_id"), result)
         result_data = result.model_dump(mode="json", exclude_none=True)
@@ -693,7 +831,7 @@ class HomeAssistantMCP:
         async with self._session(user_id):
             pass
 
-    async def _read_only_tools(self, session: ClientSession) -> list[Tool]:
+    async def _read_only_tools(self, session: ClientSession, *, include_writes: bool = False) -> list[Tool]:
         tools: dict[str, Tool] = {}
         cursor = None
         discovered = 0
@@ -703,6 +841,14 @@ class HomeAssistantMCP:
             discovered += len(page.tools)
             for tool in page.tools:
                 if tool.name in READ_ONLY_TOOLS:
+                    if tool.name in tools:
+                        raise MCPToolDenied("Outil MCP ambigu")
+                    tools[tool.name] = tool
+                elif _is_vtherm_tool_name(tool.name) and (include_writes or _is_read_only_vtherm_tool(tool)):
+                    try:
+                        _validate_dynamic_tool_schema(tool.inputSchema)
+                    except MCPToolDenied:
+                        continue
                     if tool.name in tools:
                         raise MCPToolDenied("Outil MCP ambigu")
                     tools[tool.name] = tool
@@ -719,9 +865,13 @@ class HomeAssistantMCP:
         async with self._session(user_id) as session:
             return await self._read_only_tools(session)
 
-    async def tools_for(self, user_id: str, additional_secrets: tuple[str, ...] = ()) -> list[ReadOnlyMCPTool]:
+    async def list_tools(self, user_id: str) -> list[Tool]:
+        async with self._session(user_id) as session:
+            return await self._read_only_tools(session, include_writes=True)
+
+    async def tools_for(self, user_id: str, additional_secrets: tuple[str, ...] = ()) -> list[MCPTool]:
         scope = MCPRequestScope()
-        return [ReadOnlyMCPTool(self, user_id, tool, additional_secrets, scope) for tool in await self.list_read_only_tools(user_id)]
+        return [MCPTool(self, user_id, tool, additional_secrets, scope) for tool in await self.list_tools(user_id)]
 
     async def inventory_for(self, user_id: str) -> dict[str, Any]:
         if not self.secrets.get(user_id, "home_assistant"):
@@ -796,8 +946,12 @@ class HomeAssistantMCP:
             "limit": limit,
         }
 
-    async def call_read_only_tool(self, user_id: str, name: str, arguments: dict[str, Any]) -> CallToolResult:
-        if name not in READ_ONLY_TOOLS:
+    async def call_read_only_tool(
+        self, user_id: str, name: str, arguments: dict[str, Any], *, expected_tool: Tool | None = None,
+    ) -> CallToolResult:
+        if name not in READ_ONLY_TOOLS and (
+            expected_tool is None or expected_tool.name != name or not _is_read_only_vtherm_tool(expected_tool)
+        ):
             raise MCPToolDenied("Outil MCP non autorisé")
         if name in HISTORY_TOOL_NAMES:
             arguments = await self._validate_history_request(user_id, arguments)
@@ -805,8 +959,54 @@ class HomeAssistantMCP:
             arguments = await self._validate_diagnostic_request(user_id, name, arguments)
         async with self._session(user_id) as session:
             tools = await self._read_only_tools(session)
-            if not any(tool.name == name for tool in tools):
+            discovered = next((tool for tool in tools if tool.name == name), None)
+            if discovered is None:
                 raise MCPToolDenied("Outil MCP indisponible")
+            if name not in READ_ONLY_TOOL_DEFINITIONS:
+                if not _is_read_only_vtherm_tool(discovered) or discovered.inputSchema != expected_tool.inputSchema:
+                    raise MCPToolDenied("Outil MCP indisponible")
+                schema = _validate_dynamic_tool_schema(discovered.inputSchema)
+                _validate_dynamic_tool_arguments(schema, arguments)
+            result = await session.call_tool(name, arguments)
+            if result.isError:
+                _LOGGER.warning("operation=mcp.call category=tool_error tool=%s", name)
+            return result
+
+    async def validate_vtherm_write_target(
+        self, user_id: str, arguments: dict[str, Any], scope: MCPRequestScope,
+    ) -> str:
+        entity_id = arguments.get("entity_id")
+        if not isinstance(entity_id, str) or not entity_id.startswith("climate."):
+            raise MCPToolDenied("Une cible VTherm explicite est requise")
+        if scope.selected_vtherm_id is not None and scope.selected_vtherm_id != entity_id:
+            raise MCPToolDenied("La cible ne correspond pas au VTherm sélectionné")
+        inventory = await self.inventory_for(user_id)
+        if entity_id not in {item["entity_id"] for item in inventory["thermostats"]}:
+            raise MCPToolDenied("La cible doit être un climate VTherm exposé")
+        return entity_id
+
+    async def call_vtherm_tool(
+        self, user_id: str, name: str, arguments: dict[str, Any], *, expected_tool: Tool, scope: MCPRequestScope,
+    ) -> CallToolResult:
+        if (
+            not _is_vtherm_tool_name(name)
+            or expected_tool.name != name
+            or _is_read_only_vtherm_tool(expected_tool)
+        ):
+            raise MCPToolDenied("Outil VTherm modifiant non autorisé")
+        await self.validate_vtherm_write_target(user_id, arguments, scope)
+        async with self._session(user_id) as session:
+            tools = await self._read_only_tools(session, include_writes=True)
+            discovered = next((tool for tool in tools if tool.name == name), None)
+            if (
+                discovered is None
+                or discovered.inputSchema != expected_tool.inputSchema
+                or discovered.annotations != expected_tool.annotations
+                or _is_read_only_vtherm_tool(discovered)
+            ):
+                raise MCPToolDenied("Outil VTherm modifiant indisponible")
+            schema = _validate_dynamic_tool_schema(discovered.inputSchema)
+            _validate_dynamic_tool_arguments(schema, arguments)
             result = await session.call_tool(name, arguments)
             if result.isError:
                 _LOGGER.warning("operation=mcp.call category=tool_error tool=%s", name)

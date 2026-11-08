@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.requests import HTTPConnection
 
-from .conversations import ConversationAgentFactory, ConversationRunner, ConversationStore
+from .conversations import ConversationAgentFactory, ConversationRunner, ConversationStore, public_confirmation
 from .ha_auth import verify_ingress_admin
 from .ha_mcp import HomeAssistantMCP, MCPConnectionError, MCPToolDenied
 from .models import ModelConfig, ModelRegistry
@@ -151,7 +151,13 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
         conversation, version = application.state.conversations.snapshot(request.state.user_id)
         messages = conversation[0] if conversation else []
         inventory = conversation[1].get("inventory") if conversation else None
-        return JSONResponse(redact_data({"messages": messages, "inventory": inventory, "version": version}, sensitive_values(request)), headers={"Cache-Control": "no-store"})
+        pending = conversation[1].get("pending_confirmation") if conversation else None
+        return JSONResponse(redact_data({
+            "messages": messages,
+            "inventory": inventory,
+            "pending_confirmation": public_confirmation(pending, sensitive_values(request)),
+            "version": version,
+        }, sensitive_values(request)), headers={"Cache-Control": "no-store"})
 
     @application.post("/api/conversation/inventory")
     async def initialize_inventory(request: Request) -> JSONResponse:
@@ -211,6 +217,33 @@ def create_app(mode: str, *, verify_admin: Callable[[str], Awaitable[bool]] = ve
         async def events():
             arguments = (user_id, payload["question"], secrets) if sent_at is None else (user_id, payload["question"], secrets, sent_at)
             async for event in application.state.conversation_runner.respond(*arguments):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+    @application.post("/api/conversation/confirm")
+    async def confirm_tool_call(request: Request) -> Response:
+        if application.state.conversation_runner is None:
+            return JSONResponse({"detail": "Connexion Home Assistant non configurée"}, status_code=503, headers={"Cache-Control": "no-store"})
+        try:
+            payload = await request.json()
+            if (
+                not isinstance(payload, dict)
+                or set(payload) != {"confirmation_id", "confirmed"}
+                or not isinstance(payload["confirmation_id"], str)
+                or not payload["confirmation_id"]
+                or type(payload["confirmed"]) is not bool
+            ):
+                raise ValueError
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return JSONResponse({"detail": "Confirmation invalide"}, status_code=400, headers={"Cache-Control": "no-store"})
+        user_id = request.state.user_id
+        secrets = sensitive_values(request)
+
+        async def events():
+            async for event in application.state.conversation_runner.confirm(
+                user_id, payload["confirmation_id"], payload["confirmed"], secrets,
+            ):
                 yield json.dumps(event, ensure_ascii=False) + "\n"
 
         return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

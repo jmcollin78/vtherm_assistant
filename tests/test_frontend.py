@@ -30,7 +30,7 @@ def browser_frontend(page, request):
         "messages": [{"role": "user", "text": "État du salon ?"}, {"role": "assistant", "text": "En attente."}],
         "model": {"provider": "gemini", "model": "model-test", "url": None},
         "failures": {}, "calls": [], "stream": "complete", "stream_events": None, "stream_text": None, "errors": [],
-        "prefix": "", "request_paths": [],
+        "prefix": "", "request_paths": [], "pending_confirmation": None, "confirmation_requests": [],
     }
     page.on("pageerror", lambda error: state["errors"].append(str(error)))
 
@@ -72,10 +72,13 @@ def browser_frontend(page, request):
             else:
                 route.fulfill(json=state["model"])
         elif path == "/api/conversation" and method == "GET":
-            route.fulfill(json={"messages": state["messages"], "version": state.get("version", 0), "inventory": state.get("inventory")})
+            route.fulfill(json={"messages": state["messages"], "version": state.get("version", 0),
+                                "inventory": state.get("inventory"),
+                                "pending_confirmation": state.get("pending_confirmation")})
         elif path == "/api/conversation" and method == "DELETE":
             state["messages"] = []
             state["inventory"] = None
+            state["pending_confirmation"] = None
             state["version"] = state.get("version", 0) + 1
             route.fulfill(status=204)
         elif path == "/api/conversation/inventory":
@@ -92,7 +95,12 @@ def browser_frontend(page, request):
                 state["pending"] = route
                 return
             events = state["stream_events"] or [{"type": "delta", "text": "Je consulte le thermostat. "}, {"type": "delta", "text": "En attente."}]
-            if state["stream"] == "complete":
+            if state["stream"] == "confirmation":
+                confirmation = state["confirmation"]
+                state["pending_confirmation"] = confirmation
+                state["messages"].append({"role": "user", "text": route.request.post_data_json["question"]})
+                events = [{"type": "confirmation", **confirmation}]
+            elif state["stream"] == "complete":
                 events = [*events, {"type": "complete"}]
                 state["messages"] += [{"role": "user", "text": route.request.post_data_json["question"]},
                                       {"role": "assistant", "text": state["stream_text"] or "Je consulte le thermostat. En attente."}]
@@ -100,6 +108,14 @@ def browser_frontend(page, request):
                 state["messages"][-1]["created_at"] = next((event.get("created_at") for event in events if event["type"] == "delta"), None)
             elif state["stream"] == "error":
                 events.append({"type": "error", "message": "Fournisseur indisponible ; réessayez."})
+            route.fulfill(content_type="application/x-ndjson", body="".join(json.dumps(event) + "\n" for event in events))
+        elif path == "/api/conversation/confirm" and method == "POST":
+            state["confirmation_requests"].append(route.request.post_data_json)
+            approved = route.request.post_data_json["confirmed"]
+            state["pending_confirmation"] = None
+            response_text = "Résultat MCP reçu." if approved else "Aucune écriture demandée."
+            state["messages"].append({"role": "assistant", "text": response_text})
+            events = [{"type": "delta", "text": response_text}, {"type": "complete"}]
             route.fulfill(content_type="application/x-ndjson", body="".join(json.dumps(event) + "\n" for event in events))
         elif path.startswith("/api/secrets/"):
             route.fulfill(status=204)
@@ -122,6 +138,65 @@ def open_settings(page):
 def assert_empty_secrets(page):
     expect(page.locator("#provider-key")).to_have_value("")
     expect(page.locator("#ha-key")).to_have_value("")
+
+
+def confirmation_details(**updates):
+    return {
+        "confirmation_id": "confirmation-test-id",
+        "operation": "versatile_thermostat__set_temperature",
+        "target": "climate.salon",
+        "arguments": {"entity_id": "climate.salon", "temperature": 20},
+        "hint": "Vérifiez la cible et la température.",
+        "expires_at": 2000000000,
+        **updates,
+    }
+
+
+@pytest.mark.parametrize("approved", [True, False], ids=["approve", "refuse"])
+def test_frontend_confirmation_shows_exact_parameters_and_sends_only_decision(frontend, approved):
+    page, state = frontend
+    state["stream"] = "confirmation"
+    state["confirmation"] = confirmation_details()
+    page.reload()
+    page.locator("#question").fill("Règle le salon à 20 degrés")
+    page.locator("#send").click()
+    panel = page.locator(".confirmation-panel")
+    expect(panel).to_be_visible()
+    expect(panel.locator(".confirmation-field").nth(0)).to_contain_text("versatile_thermostat__set_temperature")
+    expect(panel.locator(".confirmation-field").nth(1)).to_contain_text("climate.salon")
+    expect(panel.locator("pre")).to_contain_text('"temperature": 20')
+    expect(page.locator("#send")).to_be_disabled()
+    page.locator(".confirmation-actions button").nth(0 if approved else 1).click()
+    expect(page.locator(".confirmation-panel .confirmation-status")).to_contain_text(
+        "Accord transmis" if approved else "Action refusée",
+    )
+    expect(page.locator("#send")).to_be_enabled()
+    assert state["confirmation_requests"] == [{
+        "confirmation_id": "confirmation-test-id", "confirmed": approved,
+    }]
+    page.reload()
+    expect(page.locator(".confirmation-panel")).to_have_count(0)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_frontend_restores_pending_confirmation_and_blocks_ambiguous_or_expired_actions(frontend):
+    page, state = frontend
+    state["pending_confirmation"] = confirmation_details(target=None)
+    page.reload()
+    expect(page.locator(".confirmation-panel")).to_be_visible()
+    expect(page.locator(".confirmation-field").nth(1)).to_contain_text("Cible non déterminée")
+    expect(page.locator(".confirmation-status")).to_contain_text("cible est ambiguë")
+    expect(page.locator(".confirmation-actions button").first).to_be_disabled()
+    expect(page.locator("#send")).to_be_disabled()
+    assert not state["confirmation_requests"]
+
+    state["pending_confirmation"] = confirmation_details(expires_at=1)
+    page.reload()
+    expect(page.locator(".confirmation-status")).to_contain_text("a expiré")
+    expect(page.locator(".confirmation-actions button").first).to_be_disabled()
+    expect(page.locator(".confirmation-actions button").nth(1)).to_be_disabled()
+    expect(page.locator("#send")).to_be_enabled()
+    assert not state["confirmation_requests"]
 
 
 @pytest.mark.parametrize("page", [
@@ -540,7 +615,7 @@ def test_frontend_restores_isolated_followups_after_backend_restart(frontend, tm
     active = {"user": "alice"}
     timestamps = {}
     observed_requests = []
-    tool = Tool(name="versatile_thermostat__get_status", inputSchema={"type": "object"})
+    tool = Tool(name="versatile_thermostat__list_vtherms", inputSchema={"type": "object"})
 
     async def verify_admin(user_id):
         return user_id in {"alice", "bob"}
@@ -554,7 +629,7 @@ def test_frontend_restores_isolated_followups_after_backend_restart(frontend, tm
         observed_requests.append((kwargs["model"], history))
         has_response = any(part.function_response for content in contents for part in content.parts or [])
         if not has_response and contents[-1].parts[0].text == "Diagnostic ?":
-            part = types.Part(function_call=types.FunctionCall(name=tool.name, args={"entity_id": "climate.salon"}))
+            part = types.Part(function_call=types.FunctionCall(name=tool.name, args={}))
         else:
             part = types.Part(text=f"Observation pour {kwargs['model']}.")
 
@@ -572,7 +647,7 @@ def test_frontend_restores_isolated_followups_after_backend_restart(frontend, tm
         route.fulfill(status=response.status_code, content_type=response.headers.get("content-type", "application/json"), body=response.content)
 
     with ExitStack() as stack:
-        stack.enter_context(patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.list_read_only_tools", new_callable=AsyncMock, return_value=[tool]))
+        stack.enter_context(patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.list_tools", new_callable=AsyncMock, return_value=[tool]))
         stack.enter_context(patch("vtherm_assistant.ha_mcp.HomeAssistantMCP.call_read_only_tool", new_callable=AsyncMock, side_effect=read_tool))
         provider = stack.enter_context(patch("google.genai.Client"))
         provider.return_value.aio.models.generate_content_stream = AsyncMock(side_effect=generate)
