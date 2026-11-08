@@ -907,6 +907,11 @@ def test_conversation_agent_uses_only_users_read_tools_and_requests_clarificatio
     assert "Avant toute lecture ciblée" in agent.instruction
     assert "GetLiveContext sans filtre reste un contexte global" in agent.instruction
     assert "ne lis que les sources supplémentaires pertinentes" in agent.instruction
+    assert "Si l'utilisateur demande explicitement de changer de VTherm, sélectionne d'abord la nouvelle cible exacte" in agent.instruction
+    assert "ne bloque pas ce changement au motif que le VTherm précédent était sélectionné" in agent.instruction
+    assert "Pour tout bilan général d'un VTherm identifié, consulte ensuite aussi get_plugins" in agent.instruction
+    assert "rapporte les plugins connectés, leur statut et la couverture disponible" in agent.instruction
+    assert "sans conclure qu'aucun plugin n'est connecté" in agent.instruction
     assert "Attribue chaque observation à sa source et à son horodatage ou sa période" in agent.instruction
     assert "Si les sources se contredisent, expose les observations discordantes" in agent.instruction
     assert "un résultat vide valide" in agent.instruction

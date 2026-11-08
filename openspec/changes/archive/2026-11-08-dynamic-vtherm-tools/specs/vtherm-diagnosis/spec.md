@@ -38,3 +38,19 @@ Les outils VTherm de consultation des journaux techniques et des plugins MUST re
 #### Scenario: Plusieurs VTherm concernés
 - **WHEN** la question porte sur plusieurs VTherm et nécessite des journaux ou des plugins
 - **THEN** l'assistant traite chaque VTherm dans un appel distinct, après avoir identifié les thermostats concernés
+
+#### Scenario: Bilan général incluant les plugins
+- **WHEN** l'utilisateur demande un bilan général d'un VTherm identifié et que l'outil de consultation des plugins est disponible
+- **THEN** l'assistant consulte les plugins de ce seul VTherm et rapporte les plugins connectés, leur statut et la couverture retournée
+
+#### Scenario: État des plugins indisponible
+- **WHEN** l'outil de consultation des plugins est absent, indisponible ou retourne des données incomplètes
+- **THEN** l'assistant signale cette limite sans conclure qu'aucun plugin n'est connecté
+
+#### Scenario: Changement explicite de VTherm
+- **WHEN** l'utilisateur demande explicitement de passer à un autre VTherm identifié
+- **THEN** l'assistant sélectionne d'abord ce climate par son état ou son diagnostic, puis effectue les lectures complémentaires sur cette nouvelle cible sans échouer à cause de la sélection précédente
+
+#### Scenario: Nouvelle cible ambiguë
+- **WHEN** la demande de changement ne permet pas d'identifier un seul VTherm
+- **THEN** l'assistant demande une précision avant toute lecture ciblée

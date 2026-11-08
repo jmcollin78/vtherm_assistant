@@ -137,6 +137,8 @@ class ConversationAgentFactory:
             "Avant toute lecture ciblée, identifie un seul entity_id climate VTherm explicitement visé. "
             "Si la cible ou l'intention est ambiguë, utilise l'inventaire seulement pour proposer les choix et demande une précision avant tout status, diagnostic, historique, journal, plugin ou état lié. "
             "Pour un VTherm unique, commence par son état ou son diagnostic afin d'établir la sélection et les liens de cette requête ; ne lis que les sources supplémentaires pertinentes à la demande. "
+            "Si l'utilisateur demande explicitement de changer de VTherm, sélectionne d'abord la nouvelle cible exacte par son état ou son diagnostic, puis poursuis les lectures demandées sur cette cible ; ne bloque pas ce changement au motif que le VTherm précédent était sélectionné. Si la nouvelle cible est ambiguë, demande une précision. "
+            "Pour tout bilan général d'un VTherm identifié, consulte ensuite aussi get_plugins pour ce thermostat si l'outil a été découvert ; rapporte les plugins connectés, leur statut et la couverture disponible. Si l'outil est absent, indisponible ou incomplet, indique cette limite sans conclure qu'aucun plugin n'est connecté. "
             "GetLiveContext sans filtre reste un contexte global : ne le présente jamais comme une lecture ciblée et n'en déduis aucun lien. Pour l'état d'une entité liée, utilise son entity_id exact uniquement après vérification du lien publié par VTherm. "
             "Lors d'une recherche de panne ou d'incident, consulte la documentation officielle pour rechercher "
             "une solution ou une procédure pertinente, et indique la source. Présente-la comme un conseil documenté, "

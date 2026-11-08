@@ -750,10 +750,14 @@ class MCPTool(BaseTool):
             return redact_data(result.model_dump(mode="json", exclude_none=True), secrets)
         if self.name in GLOBAL_CONTEXT_TOOL_NAMES:
             self.scope.validate_live_context(args)
-        if self.name in HISTORY_TOOL_NAMES and args.get("entity_id") != self.scope.selected_vtherm_id:
-            raise MCPToolDenied("L'historique est réservé au VTherm sélectionné")
-        if self.name in VTherm_DIAGNOSTIC_TOOL_NAMES and args.get("entity_id") != self.scope.selected_vtherm_id:
-            raise MCPToolDenied("La lecture VTherm est réservée au thermostat sélectionné")
+        if (
+            self.name in HISTORY_TOOL_NAMES | VTherm_DIAGNOSTIC_TOOL_NAMES
+            and args.get("entity_id") != self.scope.selected_vtherm_id
+        ):
+            return {"isError": True, "content": [{
+                "type": "text",
+                "text": "Cette cible n'est pas sélectionnée. Pour changer de thermostat à la demande explicite de l'utilisateur, lisez d'abord l'état ou le diagnostic du nouveau VTherm, puis reprenez cette lecture.",
+            }]}
         if self.name in VTHERM_STATE_TOOL_NAMES:
             self.scope.clear_vtherm_selection()
         if self.dynamic_tool is None:

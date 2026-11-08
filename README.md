@@ -175,7 +175,12 @@ modèle enregistré n'est jamais remplacé automatiquement.
 Le catalogue marque ces modèles comme non vérifiés : leur disponibilité ne
 prouve pas la compatibilité des appels d'outils ou du streaming avec les
 adaptateurs de l'assistant. La matrice réelle des générations et capacités
-reste à valider dans la tâche OpenSpec 4.6 ; les tests de catalogue sont simulés.
+reste à valider pour les modèles non testés ; les tests de catalogue sont
+simulés. Pour le changement `dynamic-vtherm-tools`, l'utilisateur confirme
+comme validés en conditions réelles les modèles OpenAI Luna, Sol et Terra sur
+Home Assistant Core `2026.10.4` / VTherm `10.6.4`. Les identifiants API exacts
+de Sol et Terra ne sont pas consignés ; le statut générique `unverified` du
+catalogue n'est donc pas modifié.
 
 ## Identification
 
@@ -399,13 +404,15 @@ outils correspondants sont découverts et validés.
 
 L'historique, les journaux et les plugins sont conditionnels : le client ne les
 propose que si le serveur MCP connecté annonce leur nom exact autorisé. Le
-VTherm installé sur la cible de référence est `10.6.3` : il ne fournit pas
-`get_history`, `get_logs` ou `get_plugins`. `get_history` a été vérifié dans
-la préversion `10.6.4.beta1` ; `get_logs` et `get_plugins` seulement dans la
-branche de développement `2208-feature-request---add-more-diagnostic-tools-for-ai-assistant`.
-Leur présence dans ces sources ne garantit pas leur disponibilité sur une
-installation. Le client ne promet donc pas ces lectures lorsqu'elles ne sont
-pas annoncées. Le détail des versions, limites et erreurs est dans la
+un essai réel rapporté le 8 novembre 2026 utilise HA Core `2026.10.4` et VTherm
+`10.6.4` ; l'utilisateur y a confirmé un bilan du plugin `VTherm Pellet Stove`,
+ce qui atteste la disponibilité de `get_plugins` dans cet environnement.
+`get_history` a été vérifié dans la préversion `10.6.4.beta1` ; `get_logs` a été
+vérifié dans la branche de développement
+`2208-feature-request---add-more-diagnostic-tools-for-ai-assistant`. Ces essais
+ne garantissent pas la présence de chaque outil sur d'autres installations ; le
+client ne promet donc pas les lectures qui ne sont pas annoncées. Le détail des
+versions, limites et erreurs est dans la
 [note sur les sources diagnostiques](docs/contrat-historique-mcp.md).
 
 L'historique concerne uniquement le climate VTherm sélectionné, jamais ses
@@ -429,9 +436,10 @@ Les tests automatisés utilisent des serveurs MCP et fournisseurs simulés. Les
 contrats du serveur ont été examinés pour HA Core 2026.10.4 et les outils
 VTherm pour 10.6.4 ; l'installation de référence est en VTherm 10.6.3, où
 historique, journaux et plugins ne sont pas publiés. La sérialisation locale
-des schémas est testée pour Gemini, OpenAI, Anthropic et Ollama, mais
-l'acceptation par des modèles distants, les écritures sur une instance réelle
-et les versions HA/VTherm supplémentaires restent à valider.
+des schémas est testée pour Gemini, OpenAI, Anthropic et Ollama. Les modèles
+OpenAI Luna, Sol et Terra sont validés par des essais réels rapportés par
+l'utilisateur ; les autres modèles distants, l'isolation multi-utilisateur et
+les versions HA/VTherm supplémentaires restent à valider.
 
 Ce changement n'est pas inclus dans l'image HA OS publiée `0.1.2` : celle-ci
 reste en lecture seule. Ne pas utiliser cette image pour essayer le nouveau

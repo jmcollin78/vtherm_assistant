@@ -648,15 +648,16 @@ def test_history_tool_requires_selected_vtherm_for_current_request(tmp_path) -> 
          patch.object(client, "inventory_for", new_callable=AsyncMock, return_value=inventory):
         tools = asyncio.run(client.tools_for("alice"))
         status_tool, history_tool = tools
-        with pytest.raises(MCPToolDenied, match="VTherm sélectionné"):
-            asyncio.run(history_tool.run_async(
-                args={
-                    "entity_id": "climate.salon",
-                    "start_time": "2026-11-01T00:00:00+00:00",
-                    "end_time": "2026-11-02T00:00:00+00:00",
-                },
-                tool_context=SimpleNamespace(user_id="alice"),
-            ))
+        unselected = asyncio.run(history_tool.run_async(
+            args={
+                "entity_id": "climate.salon",
+                "start_time": "2026-11-01T00:00:00+00:00",
+                "end_time": "2026-11-02T00:00:00+00:00",
+            },
+            tool_context=SimpleNamespace(user_id="alice"),
+        ))
+        assert unselected["isError"] is True
+        assert session.call_tool.await_count == 0
         asyncio.run(status_tool.run_async(
             args={"entity_id": "climate.salon"},
             tool_context=SimpleNamespace(user_id="alice"),
@@ -669,15 +670,16 @@ def test_history_tool_requires_selected_vtherm_for_current_request(tmp_path) -> 
             },
             tool_context=SimpleNamespace(user_id="alice"),
         ))
-        with pytest.raises(MCPToolDenied, match="VTherm sélectionné"):
-            asyncio.run(history_tool.run_async(
-                args={
-                    "entity_id": "climate.autre",
-                    "start_time": "2026-11-01T00:00:00+00:00",
-                    "end_time": "2026-11-02T00:00:00+00:00",
-                },
-                tool_context=SimpleNamespace(user_id="alice"),
-            ))
+        unselected_other = asyncio.run(history_tool.run_async(
+            args={
+                "entity_id": "climate.autre",
+                "start_time": "2026-11-01T00:00:00+00:00",
+                "end_time": "2026-11-02T00:00:00+00:00",
+            },
+            tool_context=SimpleNamespace(user_id="alice"),
+        ))
+        assert unselected_other["isError"] is True
+        assert session.call_tool.await_count == 2
 
     history = json.loads(result["content"][0]["text"])
     assert history["rows"][0]["attributes"] == {"current_temperature": 20, "temperature": 21}
@@ -820,6 +822,15 @@ def test_vtherm_diagnostic_tools_require_one_selected_vtherm_and_preserve_access
             "errors": [{"code": "plugin_discovery_unavailable", "scope": "plugins",
                         "message_fr": "Découverte indisponible"}],
         }, isError=True),
+        CallToolResult(content=[TextContent(type="text", text=json.dumps({
+            "entity_id": "climate.chambre",
+            "attributes": {"vtherm_over_climate": {"underlying_entities": []}},
+        }))]),
+        CallToolResult(content=[TextContent(type="text", text="private server body")], structuredContent={
+            "schema_version": 1, "status": "error", "entity_id": "climate.chambre",
+            "errors": [{"code": "plugin_discovery_unavailable", "scope": "plugins",
+                        "message_fr": "Découverte indisponible"}],
+        }, isError=True),
     ]
     inventory = {"thermostats": [{"entity_id": "climate.salon"}, {"entity_id": "climate.chambre"}]}
 
@@ -836,8 +847,10 @@ def test_vtherm_diagnostic_tools_require_one_selected_vtherm_and_preserve_access
             "versatile_thermostat__get_plugins",
         ]
         context = SimpleNamespace(user_id="alice")
-        with pytest.raises(MCPToolDenied, match="thermostat sélectionné"):
-            asyncio.run(logs_tool.run_async(args={"entity_id": "climate.salon"}, tool_context=context))
+        unselected = asyncio.run(logs_tool.run_async(args={"entity_id": "climate.salon"}, tool_context=context))
+        assert unselected["isError"] is True
+        assert "lisez d'abord l'état ou le diagnostic" in unselected["content"][0]["text"]
+        assert session.call_tool.await_count == 0
         asyncio.run(status_tool.run_async(args={"entity_id": "climate.salon"}, tool_context=context))
         for tool in (logs_tool, plugins_tool):
             result = asyncio.run(tool.run_async(args={"entity_id": "climate.salon"}, tool_context=context))
@@ -845,8 +858,17 @@ def test_vtherm_diagnostic_tools_require_one_selected_vtherm_and_preserve_access
             error = json.loads(result["content"][0]["text"])
             assert error["errors"][0]["code"] in {"target_not_exposed", "plugin_discovery_unavailable"}
             assert "private server body" not in result["content"][0]["text"]
-        with pytest.raises(MCPToolDenied, match="thermostat sélectionné"):
-            asyncio.run(logs_tool.run_async(args={"entity_id": "climate.chambre"}, tool_context=context))
+        unselected_other = asyncio.run(logs_tool.run_async(
+            args={"entity_id": "climate.chambre"}, tool_context=context,
+        ))
+        assert unselected_other["isError"] is True
+        assert session.call_tool.await_count == 3
+        asyncio.run(status_tool.run_async(args={"entity_id": "climate.chambre"}, tool_context=context))
+        assert status_tool.scope.selected_vtherm_id == "climate.chambre"
+        plugin_result = asyncio.run(plugins_tool.run_async(
+            args={"entity_id": "climate.chambre"}, tool_context=context,
+        ))
+        assert plugin_result["isError"] is True
         for denied in ("unknown__get_logs", "versatile_thermostat__set_temperature"):
             with pytest.raises(MCPToolDenied, match="non autorisé"):
                 asyncio.run(client.call_read_only_tool("alice", denied, {}))
@@ -855,6 +877,8 @@ def test_vtherm_diagnostic_tools_require_one_selected_vtherm_and_preserve_access
         ("versatile_thermostat__get_status", {"entity_id": "climate.salon"}),
         ("versatile_thermostat__get_logs", {"entity_id": "climate.salon"}),
         ("versatile_thermostat__get_plugins", {"entity_id": "climate.salon"}),
+        ("versatile_thermostat__get_status", {"entity_id": "climate.chambre"}),
+        ("versatile_thermostat__get_plugins", {"entity_id": "climate.chambre"}),
     ]
 
 
