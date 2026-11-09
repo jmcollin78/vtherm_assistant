@@ -1,3 +1,9 @@
+[![GitHub Release][releases-shield]][releases] [![GitHub Activity][commits-shield]][commits] [![License][license-shield]](LICENSE) [![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
+
+<p align="center">
+<img src="brand/icon@2x.png" />
+</p>
+
 # VTherm Assistant
 
 A conversational assistant for diagnosing and understanding [Versatile
@@ -47,6 +53,44 @@ request is never approval. A rejected, ambiguous, or expired request is not
 executed. After approval, always verify in Home Assistant what actually changed
 and its effect on the heating; a tool result or assistant response is not a
 substitute for that check. No generic Home Assistant write tool is exposed.
+
+## Overview
+
+![Splash screen](images/screen-2.png)
+
+![Full state](images/screen-3.png)
+
+![Why stopped](images/screen-4.png)
+
+![Turn on](images/screen-5.png)
+
+## Example Questions
+
+### Diagnosis
+
+> Give me the full status of `Office thermostat`
+
+> Why did the thermostat turn off around 12:30?
+
+> Give me an overview of SmartPI
+
+> Are my TPI settings configured correctly?
+
+> Why did the office thermostat switch to safety mode?
+
+### Actions
+
+> Turn on the `office thermostat` and set the preset to comfort
+
+> Turn off the `office thermostat`
+
+### VTherm Features
+
+> How does safety mode work?
+
+> What's the difference between presence detection and motion detection in Versatile Thermostat?
+
+Ask away! Share your best conversations in the [discussions](https://github.com/jmcollin78/vtherm_assistant/discussions/).
 
 ## Install and Configure
 
@@ -132,3 +176,18 @@ for the full procedure.
 ## License
 
 See [LICENSE](LICENSE).
+
+
+***
+
+[vtherm_assistant]: https://github.com/jmcollin78/vtherm_assistant
+[buymecoffee]: https://www.buymeacoffee.com/jmcollin78
+[buymecoffeebadge]: https://img.shields.io/badge/Buy%20me%20a%20beer-%245-orange?style=for-the-badge&logo=buy-me-a-beer
+[commits-shield]: https://img.shields.io/github/commit-activity/y/jmcollin78/vtherm_assistant.svg?style=for-the-badge
+[commits]: https://github.com/jmcollin78/vtherm_assistant/commits/master
+[forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge
+[forum]: https://community.home-assistant.io/
+[license-shield]: https://img.shields.io/github/license/jmcollin78/vtherm_assistant.svg?style=for-the-badge
+[maintenance-shield]: https://img.shields.io/badge/maintainer-Joakim%20Sørensen%20%40ludeeus-blue.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/jmcollin78/vtherm_assistant.svg?style=for-the-badge
+[releases]: https://github.com/jmcollin78/vtherm_assistant/releases
