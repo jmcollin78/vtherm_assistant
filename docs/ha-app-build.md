@@ -138,6 +138,38 @@ pushed by the user. The GitHub API confirms success for
 [run 42423430156](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42423430156)
 on source revision `bcb01602992bdcd9aa9b4b92b0229dd7c645f644`.
 
+## Release 1.0.0
+
+On 2026-11-08, source revision
+`bbbaba2f8ad87099fc7f199886b46f5c0472f768` was published to `main`. The
+[CI run 42531162871](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42531162871)
+passed on that exact revision. Package metadata, Docker version label, app
+manifest, and changelog identify version `1.0.0`.
+
+This release discovers accepted VTherm MCP tools dynamically and extends
+diagnostics to plugin status, thermostat history and logs, linked entity states,
+and official documentation when available. Every VTherm write requires
+separate approval in the UI; generic Home Assistant writes remain unavailable.
+
+The public image `ghcr.io/jmcollin78/vtherm-assistant:1.0.0` has index digest
+`sha256:a789e6bfa2f13f2eca1797f662e9e6d935afafc6b0b410908ecf1b97a89aa512`.
+Its arm64 and amd64 manifests carry version `1.0.0` and source revision
+`bbbaba2f8ad87099fc7f199886b46f5c0472f768`. Both manifests, their
+configurations, and all ten layers were downloaded anonymously; every size and
+SHA-256 was verified. The published image passed all six platform-specific
+Docker tests on each architecture.
+
+The `ha-app` catalog was published at commit
+`9b7ee8454a9a310ee01638c0b9e326565a67d352`, a descendant of the `0.1.2`
+catalog commit. The manifest, README, DOCS, and changelog changed; all nine
+public files match the validated snapshot byte for byte. An independent public
+clone confirmed the published branch. The repository URL remains
+`https://github.com/jmcollin78/vtherm_assistant#ha-app`.
+
+The app remains at the experimental stage. New write workflows were not
+deployed or validated on HA OS during publication. No HA configuration,
+heating action, backup, or restore was performed.
+
 ## Release 0.1.2
 
 On 2026-11-08, after explicit authorization for release commits and pushes,

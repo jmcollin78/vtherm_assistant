@@ -138,6 +138,39 @@ Le workflow a depuis ete pousse par l'utilisateur. L'API GitHub confirme
 la reussite du [run 42423430156](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42423430156)
 sur la revision source `bcb01602992bdcd9aa9b4b92b0229dd7c645f644`.
 
+## Release 1.0.0
+
+Le 2026-11-08, la revision source
+`bbbaba2f8ad87099fc7f199886b46f5c0472f768` a ete publiee sur `main`. La
+[CI 42531162871](https://github.com/jmcollin78/vtherm_assistant/actions/runs/42531162871)
+a reussi sur cette revision exacte. Les metadonnees du paquet, le label Docker,
+le manifeste de l'app et le changelog indiquent `1.0.0`.
+
+Cette version decouvre dynamiquement les outils MCP VTherm acceptes et enrichit
+les diagnostics avec l'etat des plugins, l'historique et les journaux du
+thermostat, les etats des entites liees et la documentation officielle lorsque
+disponibles. Chaque ecriture VTherm exige une approbation distincte dans
+l'interface ; les ecritures Home Assistant generiques restent indisponibles.
+
+L'image publique `ghcr.io/jmcollin78/vtherm-assistant:1.0.0` a pour digest
+d'index `sha256:a789e6bfa2f13f2eca1797f662e9e6d935afafc6b0b410908ecf1b97a89aa512`.
+Ses manifests arm64 et amd64 portent la version `1.0.0` et la revision source
+`bbbaba2f8ad87099fc7f199886b46f5c0472f768`. Les deux manifests, leurs
+configurations et les dix couches ont ete telecharges anonymement ; chaque
+taille et SHA-256 a ete verifie. L'image publiee a passe les six tests Docker
+propres a chaque architecture.
+
+Le catalogue `ha-app` a ete publie au commit
+`9b7ee8454a9a310ee01638c0b9e326565a67d352`, descendant du commit catalogue
+`0.1.2`. Le manifeste, le README, la DOCS et le changelog ont change ; les neuf
+fichiers publics correspondent octet par octet au snapshot valide. Un clone
+public independant a confirme la branche publiee. L'adresse du depot reste
+`https://github.com/jmcollin78/vtherm_assistant#ha-app`.
+
+L'app reste au stade experimental. Les nouveaux parcours d'ecriture n'ont pas
+ete deployes ni valides sur HA OS pendant la publication. Aucune configuration
+HA, action de chauffage, sauvegarde ou restauration n'a ete effectuee.
+
 ## Release 0.1.2
 
 Le 2026-11-08, apres autorisation explicite des commits et push de release,
